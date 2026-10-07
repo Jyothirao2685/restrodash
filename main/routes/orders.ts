@@ -15,7 +15,7 @@ import { applyPayableRounding } from '../services/tax-engine';
 import { calculateOrderTotals, recomputeOrderTotals } from '../services/orders';
 import { adjustProductStock, resolveInventoryDeduction } from '../services/inventory';
 import { applyRecipeSnapshot, buildRecipeSnapshot, parseRecipeSnapshot } from '../services/recipes';
-import { notifyKdsUpdate, notifyOrderUpdated } from '../services/kds';
+import { notifyKdsUpdate, notifyOrderUpdated, broadcastQrOrderApproved } from '../services/kds';
 import { cloudSync } from '../services/cloud-sync';
 import { validateOrderNotes, validateItemNotes, validateProductQuantity, validateDeliveryAddress } from './orders-validation';
 import { hasPermission, requirePermission } from '../services/authorization';
@@ -228,6 +228,10 @@ router.get('/', orderReadRateLimit, requirePermission('orders.read'), (req: Requ
     if (req.query.type) {
       wheres.push('type = ?');
       params.push(req.query.type);
+    }
+    if (req.query.approval_status) {
+      wheres.push('approval_status = ?');
+      params.push(req.query.approval_status);
     }
     // Filter by UTC day or date range across indexed created_at column.
     if (req.query.today && req.query.today !== '0' && req.query.today !== 'false') {
@@ -1192,6 +1196,101 @@ router.patch('/:id/status', orderWriteRateLimit, requirePermission('orders.statu
   } catch (error: any) {
     console.error("[API] Internal error:", error);
     res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : "Internal server error" });
+  }
+});
+
+router.post('/:id/qr-approve', orderWriteRateLimit, requirePermission('orders.status.update'), (req: Request, res: Response) => {
+  try {
+    const db = getDatabase();
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id) as any;
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    if (order.approval_status !== 'pending_approval') {
+      return res.status(400).json({ error: `Order is not pending approval (current: ${order.approval_status || 'approved'})` });
+    }
+
+    const authUserId = (req as any).user?.userId || 'staff';
+    const nowStr = now();
+
+    const result = withTxn(() => {
+      db.prepare(`
+        UPDATE orders
+        SET approval_status = 'approved', user_id = COALESCE(user_id, ?), updated_at = ?
+        WHERE id = ?
+      `).run(authUserId, nowStr, order.id);
+
+      recordOrderAudit(db, {
+        orderId: order.id,
+        actorUserId: authUserId,
+        action: 'qr_order_approved',
+        details: { table_id: order.table_id, order_number: order.order_number },
+      });
+
+      const updated = parseRowJson(db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id)) as any;
+      const items = attachEffectiveAddons(db, db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id).map(parseItemJson) as any[]);
+      return { order: { ...updated, items } };
+    });
+
+    notifyKdsUpdate();
+    broadcastQrOrderApproved(order.id);
+    cloudSync.recordOrderChanged(order.id, 'order.approved');
+
+    res.json({ success: true, order: result.order });
+  } catch (error: any) {
+    console.error('[Orders] QR Approve error:', error);
+    res.status(error.statusCode || 500).json({ error: error.message || 'Failed to approve order' });
+  }
+});
+
+router.post('/:id/qr-reject', orderWriteRateLimit, requirePermission('orders.status.update'), (req: Request, res: Response) => {
+  try {
+    const db = getDatabase();
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id) as any;
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    if (order.approval_status !== 'pending_approval') {
+      return res.status(400).json({ error: `Order is not pending approval (current: ${order.approval_status})` });
+    }
+
+    const authUserId = (req as any).user?.userId || 'staff';
+    const { reason } = req.body || {};
+    const nowStr = now();
+
+    withTxn(() => {
+      db.prepare(`
+        UPDATE orders
+        SET approval_status = 'rejected', status = 'cancelled', updated_at = ?
+        WHERE id = ?
+      `).run(nowStr, order.id);
+
+      db.prepare("UPDATE order_items SET status = 'cancelled', updated_at = ? WHERE order_id = ?")
+        .run(nowStr, order.id);
+
+      if (order.table_id) {
+        const otherActive = db.prepare("SELECT 1 FROM orders WHERE table_id = ? AND id != ? AND status NOT IN ('completed', 'cancelled') LIMIT 1").get(order.table_id, order.id);
+        if (!otherActive) {
+          db.prepare("UPDATE tables SET status = 'available', active_session_key = NULL, updated_at = ? WHERE id = ?")
+            .run(nowStr, order.table_id);
+        }
+      }
+
+      recordOrderAudit(db, {
+        orderId: order.id,
+        actorUserId: authUserId,
+        action: 'qr_order_rejected',
+        details: { reason: reason || 'Rejected by staff', table_id: order.table_id },
+      });
+    });
+
+    notifyKdsUpdate();
+    cloudSync.recordOrderChanged(order.id, 'order.cancelled');
+
+    res.json({ success: true, message: 'Order rejected' });
+  } catch (error: any) {
+    console.error('[Orders] QR Reject error:', error);
+    res.status(error.statusCode || 500).json({ error: error.message || 'Failed to reject order' });
   }
 });
 

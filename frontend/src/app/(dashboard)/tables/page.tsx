@@ -4,9 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
-import { Plus, X, Search, UserPlus, RotateCcw, Pencil, MapPin, MapPinned, List } from 'lucide-react';
+import { Plus, X, Search, UserPlus, RotateCcw, Pencil, MapPin, MapPinned, List, QrCode, UserX } from 'lucide-react';
 import type { Table, Customer, Order, OrderItem } from '@/lib/types';
 import FloorplanEditor from '@/components/tables/FloorplanEditor';
+import TableQrModal from '@/components/tables/TableQrModal';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
 import { tenantCan } from '@/lib/permissions';
@@ -216,6 +217,7 @@ export default function TablesPage() {
   const [editingTable, setEditingTable] = useState<Table | null>(null);
   const [selectedFloor, setSelectedFloor] = useState('all');
   const [reservingTable, setReservingTable] = useState<Table | null>(null);
+  const [qrTable, setQrTable] = useState<Table | null>(null);
   // List is the default view (table management + Add table); the floor
   // plan editor is the second view for visual layout work.
   const [view, setView] = useState<'plan' | 'list'>('list');
@@ -581,6 +583,27 @@ export default function TablesPage() {
                         {tTables('reserve')}
                       </button>
                     )}
+                    <button onClick={() => setQrTable(table)}
+                      className="text-xs text-orange-600 hover:text-orange-700 font-medium flex items-center gap-1">
+                      <QrCode size={12} /> QR Code
+                    </button>
+                    {(table.active_session_key || table.status === 'occupied') && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.post(`/tables/${table.id}/release-qr-session`);
+                            toast.success('Table released');
+                            fetchTables();
+                          } catch {
+                            toast.error('Failed to release table');
+                          }
+                        }}
+                        className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
+                        title="Release table session and mark available"
+                      >
+                        <UserX size={12} /> Release
+                      </button>
+                    )}
                     <button onClick={() => toggleActive(table)}
                       className={`text-xs font-medium flex items-center gap-1 ${!table.is_active ? 'text-green-600 hover:text-green-700' : 'text-red-500 hover:text-red-700'}`}>
                       {!table.is_active ? <><RotateCcw size={12} /> {tTables('reactivate')}</> : tTables('deactivate')}
@@ -625,6 +648,26 @@ export default function TablesPage() {
                       {tTables('reserve')}
                     </button>
                   )}
+                  <button onClick={() => setQrTable(table)} className="mt-2 mx-auto text-xs text-orange-600 hover:text-orange-700 font-medium flex items-center gap-1">
+                    <QrCode size={12} /> QR Code
+                  </button>
+                  {(table.active_session_key || table.status === 'occupied') && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await api.post(`/tables/${table.id}/release-qr-session`);
+                          toast.success('Table released');
+                          fetchTables();
+                        } catch {
+                          toast.error('Failed to release table');
+                        }
+                      }}
+                      className="mt-2 mx-auto text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
+                      title="Release table session and mark available"
+                    >
+                      <UserX size={12} /> Release
+                    </button>
+                  )}
                   <button onClick={() => openEdit(table)} className="mt-2 mx-auto text-xs text-brand hover:text-brand-hover font-medium flex items-center gap-1">
                     <Pencil size={12} /> {tTables('editTable')}
                   </button>
@@ -649,6 +692,15 @@ export default function TablesPage() {
           table={reservingTable}
           onClose={() => setReservingTable(null)}
           onDone={() => { setReservingTable(null); fetchTables(); }}
+        />
+      )}
+
+      {/* Table QR Code & Printable Tent Card Modal */}
+      {qrTable && (
+        <TableQrModal
+          table={qrTable}
+          isOpen={!!qrTable}
+          onClose={() => setQrTable(null)}
         />
       )}
 

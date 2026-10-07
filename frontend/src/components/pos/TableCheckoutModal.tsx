@@ -175,10 +175,34 @@ export default function TableCheckoutModal({
 
   if (!order) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-card rounded-2xl p-6 w-full max-w-md">
-          <p className="text-muted-foreground text-center py-4">{t('noActiveOrder')}</p>
-          <Button onClick={onClose} variant="outline" className="w-full">{t('close')}</Button>
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-card rounded-2xl p-6 w-full max-w-md space-y-4">
+          <div className="text-center">
+            <h3 className="text-lg font-bold text-foreground">Table {table.name}</h3>
+            <p className="text-muted-foreground text-sm mt-1">{t('noActiveOrder')}</p>
+            {table.active_session_key && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800/40">
+                📱 Active QR Dine-In session open on customer device
+              </p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                try {
+                  await api.post(`/tables/${table.id}/release-qr-session`);
+                  toast.success('Table released and session cleared');
+                  onClose();
+                } catch {
+                  toast.error('Failed to release table');
+                }
+              }}
+            >
+              Release Table
+            </Button>
+            <Button onClick={onClose} variant="outline">{t('close')}</Button>
+          </div>
         </div>
       </div>
     );

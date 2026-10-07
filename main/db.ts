@@ -5490,6 +5490,57 @@ export const MIGRATIONS: { version: number; name: string; up: () => void }[] = [
       `);
     },
   },
+  {
+    version: 99,
+    name: 'add_qr_dine_in_ordering',
+    up: () => {
+      const tableColumns = getColumns(db, 'tables');
+      if (!tableColumns.includes('qr_token')) {
+        db.exec('ALTER TABLE tables ADD COLUMN qr_token TEXT');
+        db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_tables_qr_token ON tables(qr_token)');
+      }
+      if (!tableColumns.includes('active_session_key')) {
+        db.exec('ALTER TABLE tables ADD COLUMN active_session_key TEXT DEFAULT NULL');
+      }
+      if (!tableColumns.includes('qr_enabled')) {
+        db.exec('ALTER TABLE tables ADD COLUMN qr_enabled INTEGER NOT NULL DEFAULT 1');
+      }
+
+      const orderColumns = getColumns(db, 'orders');
+      if (!orderColumns.includes('is_qr')) {
+        db.exec('ALTER TABLE orders ADD COLUMN is_qr INTEGER NOT NULL DEFAULT 0');
+      }
+      if (!orderColumns.includes('approval_status')) {
+        db.exec("ALTER TABLE orders ADD COLUMN approval_status TEXT DEFAULT NULL CHECK (approval_status IN ('pending_approval', 'approved', 'rejected'))");
+      }
+      if (!orderColumns.includes('qr_customer_name')) {
+        db.exec('ALTER TABLE orders ADD COLUMN qr_customer_name TEXT DEFAULT NULL');
+      }
+      if (!orderColumns.includes('qr_customer_phone')) {
+        db.exec('ALTER TABLE orders ADD COLUMN qr_customer_phone TEXT DEFAULT NULL');
+      }
+      if (!orderColumns.includes('qr_device_session_key')) {
+        db.exec('ALTER TABLE orders ADD COLUMN qr_device_session_key TEXT DEFAULT NULL');
+      }
+
+      const existingTables = db.prepare('SELECT id FROM tables WHERE qr_token IS NULL').all() as { id: string }[];
+      const updateStmt = db.prepare('UPDATE tables SET qr_token = ? WHERE id = ?');
+      for (const t of existingTables) {
+        const token = `tbl_tok_${crypto.randomBytes(8).toString('hex')}`;
+        updateStmt.run(token, t.id);
+      }
+    },
+  },
+  {
+    version: 100,
+    name: 'add_table_qr_session_started_at',
+    up: () => {
+      const tableColumns = getColumns(db, 'tables');
+      if (!tableColumns.includes('qr_session_started_at')) {
+        db.exec('ALTER TABLE tables ADD COLUMN qr_session_started_at TEXT DEFAULT NULL');
+      }
+    },
+  },
 ];
 
 function syncBackupBeforeMigration(fromVersion: number, toVersion: number): void {
@@ -5734,6 +5785,10 @@ function createSchema(): void {
       position_y REAL,
       kitchen_station_id TEXT,
       is_active INTEGER DEFAULT 1,
+      qr_token TEXT UNIQUE,
+      active_session_key TEXT DEFAULT NULL,
+      qr_session_started_at TEXT DEFAULT NULL,
+      qr_enabled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       reservation_customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL
@@ -5808,6 +5863,11 @@ function createSchema(): void {
       completed_at TEXT,
       cancelled_at TEXT,
       cancellation_reason TEXT,
+      is_qr INTEGER NOT NULL DEFAULT 0,
+      approval_status TEXT DEFAULT NULL CHECK (approval_status IN ('pending_approval', 'approved', 'rejected')),
+      qr_customer_name TEXT DEFAULT NULL,
+      qr_customer_phone TEXT DEFAULT NULL,
+      qr_device_session_key TEXT DEFAULT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)

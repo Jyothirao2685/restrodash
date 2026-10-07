@@ -146,6 +146,10 @@ export interface Table {
   reservation_customer_id?: string | null;
   reservation_customer_name?: string | null;
   reservation_customer_phone?: string | null;
+  qr_token?: string | null;
+  qr_enabled?: boolean | number;
+  active_session_key?: string | null;
+  qr_session_started_at?: string | null;
 }
 
 export interface Customer {

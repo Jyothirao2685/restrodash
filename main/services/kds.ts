@@ -471,14 +471,14 @@ function handleStatusUpdate(client: KdsClient, message: any): void {
 
 /** Returns SQL condition for orders needing kitchen attention or unserved items. */
 function activeOrdersCondition(): string {
-  if (!isKdsEnabled()) return `o.status NOT IN ('completed', 'cancelled')`;
+  if (!isKdsEnabled()) return `o.status NOT IN ('completed', 'cancelled') AND (o.approval_status IS NULL OR o.approval_status = 'approved')`;
   // Fast indexed CTE query matching active orders or unserved items.
   return `o.id IN (
-    SELECT id FROM orders WHERE status IN ('pending','preparing','ready','served')
+    SELECT id FROM orders WHERE status IN ('pending','preparing','ready','served') AND (approval_status IS NULL OR approval_status = 'approved')
     UNION
     SELECT o2.id FROM orders o2
     JOIN order_items oi2 ON oi2.order_id = o2.id AND oi2.status NOT IN ('served','cancelled')
-    WHERE o2.status NOT IN ('pending','preparing','ready','served','cancelled')
+    WHERE o2.status NOT IN ('pending','preparing','ready','served','cancelled') AND (o2.approval_status IS NULL OR o2.approval_status = 'approved')
   )`;
 }
 
@@ -671,4 +671,30 @@ export function notifyKdsUpdate(): void {
 
 export function notifyOrderUpdated(): void {
   notifyKdsUpdate();
+}
+
+export function broadcastQrPendingOrder(orderData: any): void {
+  const payload = JSON.stringify({
+    type: 'qr_order_pending_approval',
+    order: orderData,
+    timestamp: new Date().toISOString(),
+  });
+  clients.forEach((client) => {
+    if (client.ws.readyState === WebSocket.OPEN && client.userId) {
+      try { client.ws.send(payload); } catch {}
+    }
+  });
+}
+
+export function broadcastQrOrderApproved(orderId: number | string): void {
+  const payload = JSON.stringify({
+    type: 'qr_order_approved',
+    order_id: orderId,
+    timestamp: new Date().toISOString(),
+  });
+  clients.forEach((client) => {
+    if (client.ws.readyState === WebSocket.OPEN && client.userId) {
+      try { client.ws.send(payload); } catch {}
+    }
+  });
 }

@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { getDatabase, now, parseRowJson, withTxn } from '../db';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import { hasPermission, requirePermission } from '../services/authorization';
 import { notifyKdsUpdate } from '../services/kds';
 import { cloudSync } from '../services/cloud-sync';
+import QRCode from 'qrcode';
 
 const router = Router();
 
@@ -110,6 +111,50 @@ router.get('/', requirePermission('tables.view'), (req: Request, res: Response) 
   } catch (error: any) {
     console.error("[API] Internal error:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get('/idle-qr', requirePermission('tables.view'), (req: Request, res: Response) => {
+  try {
+    const db = getDatabase();
+    const tables = db.prepare(`
+      SELECT id, number, capacity, status, floor, section, qr_token, active_session_key, qr_session_started_at
+      FROM tables
+      WHERE active_session_key IS NOT NULL
+        AND qr_session_started_at IS NOT NULL
+        AND is_active = 1
+    `).all() as any[];
+
+    const nowMs = Date.now();
+    const idleTables: any[] = [];
+
+    for (const t of tables) {
+      const activeOrder = db.prepare(`
+        SELECT id FROM orders
+        WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')
+        LIMIT 1
+      `).get(t.id);
+
+      if (!activeOrder) {
+        const startedMs = new Date(t.qr_session_started_at.replace(' ', 'T') + 'Z').getTime();
+        const elapsedSeconds = Math.max(0, Math.floor((nowMs - startedMs) / 1000));
+        const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+
+        if (elapsedSeconds >= 300) {
+          idleTables.push({
+            ...t,
+            name: t.number,
+            elapsed_seconds: elapsedSeconds,
+            elapsed_minutes: elapsedMinutes,
+          });
+        }
+      }
+    }
+
+    res.json({ idle_tables: idleTables });
+  } catch (error: any) {
+    console.error('[API] Error fetching idle QR tables:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -220,12 +265,13 @@ router.post('/', requirePermission('tables.manage'), (req: Request, res: Respons
     }
 
     const tableId = `tbl-${randomUUID().slice(0, 8)}`;
+    const qrToken = `tbl_tok_${randomBytes(8).toString('hex')}`;
     const result = db.prepare(`
-      INSERT INTO tables (id, number, capacity, floor, section, position_x, position_y, kitchen_station_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tables (id, number, capacity, floor, section, position_x, position_y, kitchen_station_id, qr_token, qr_enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
     `).run(
       tableId, tableNumber, normalizedCapacity, normalizedFloor, normalizedSection,
-      normalizedX, normalizedY, kitchen_station_id || null, now(), now()
+      normalizedX, normalizedY, kitchen_station_id || null, qrToken, now(), now()
     );
 
     const table = db.prepare('SELECT * FROM tables WHERE id = ?').get(tableId);
@@ -233,6 +279,56 @@ router.post('/', requirePermission('tables.manage'), (req: Request, res: Respons
   } catch (error: any) {
     console.error("[API] Internal error:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post('/:id/regenerate-qr', requirePermission('tables.manage'), (req: Request, res: Response) => {
+  try {
+    const db = getDatabase();
+    const existing = db.prepare('SELECT id FROM tables WHERE id = ?').get(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Table not found' });
+    }
+    const newQrToken = `tbl_tok_${randomBytes(8).toString('hex')}`;
+    db.prepare('UPDATE tables SET qr_token = ?, active_session_key = NULL, updated_at = ? WHERE id = ?')
+      .run(newQrToken, now(), req.params.id);
+    const table = db.prepare('SELECT * FROM tables WHERE id = ?').get(req.params.id);
+    res.json({ success: true, table });
+  } catch (error: any) {
+    console.error("[API] Internal error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get('/:id/qr-code', requirePermission('tables.manage'), async (req: Request, res: Response) => {
+  try {
+    const db = getDatabase();
+    const table = db.prepare('SELECT id, number, qr_token, qr_enabled FROM tables WHERE id = ?').get(req.params.id) as any;
+    if (!table) {
+      return res.status(404).json({ error: 'Table not found' });
+    }
+
+    let qrToken = table.qr_token;
+    if (!qrToken) {
+      qrToken = `tbl_tok_${randomBytes(8).toString('hex')}`;
+      db.prepare('UPDATE tables SET qr_token = ?, updated_at = ? WHERE id = ?').run(qrToken, now(), table.id);
+    }
+
+    const host = req.get('host') || 'localhost:3001';
+    const protocol = req.protocol || 'http';
+    const qrUrl = `${protocol}://${host}/m?t=${qrToken}`;
+    const qrDataUrl = await QRCode.toDataURL(qrUrl, { errorCorrectionLevel: 'M', width: 300, margin: 2 });
+
+    res.json({
+      table_id: table.id,
+      table_number: table.number,
+      qr_token: qrToken,
+      qr_url: qrUrl,
+      qr_data_url: qrDataUrl,
+    });
+  } catch (error: any) {
+    console.error('[API] Table QR error:', error);
+    res.status(500).json({ error: 'Failed to generate QR code' });
   }
 });
 
@@ -536,6 +632,9 @@ router.patch('/:id/status', requirePermission('tables.manage'), (req: Request, r
     if (status === 'reserved') {
       db.prepare('UPDATE tables SET status = ?, reservation_customer_id = ?, updated_at = ? WHERE id = ?')
         .run(status, normalizedReservationCustomerId, now(), req.params.id);
+    } else if (status === 'available') {
+      db.prepare('UPDATE tables SET status = ?, active_session_key = NULL, qr_session_started_at = NULL, updated_at = ? WHERE id = ?')
+        .run(status, now(), req.params.id);
     } else {
       db.prepare('UPDATE tables SET status = ?, updated_at = ? WHERE id = ?')
         .run(status, now(), req.params.id);
@@ -546,6 +645,68 @@ router.patch('/:id/status', requirePermission('tables.manage'), (req: Request, r
   } catch (error: any) {
     console.error("[API] Internal error:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post('/:id/release-qr-session', requirePermission('tables.view'), (req: Request, res: Response) => {
+  try {
+    const db = getDatabase();
+    const table = db.prepare('SELECT * FROM tables WHERE id = ?').get(req.params.id) as any;
+    if (!table) {
+      return res.status(404).json({ error: 'Table not found' });
+    }
+
+    withTxn(() => {
+      // Check if there are active staff orders (non-qr or approved non-completed)
+      const activeOrders = db.prepare(`
+        SELECT COUNT(*) as count FROM orders
+        WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')
+          AND (approval_status = 'approved' OR approval_status IS NULL)
+      `).get(table.id) as { count: number };
+
+      const newStatus = activeOrders.count > 0 ? 'occupied' : 'available';
+
+      db.prepare(`
+        UPDATE tables
+        SET active_session_key = NULL, qr_session_started_at = NULL, status = ?, updated_at = ?
+        WHERE id = ?
+      `).run(newStatus, now(), table.id);
+
+      // Any pending unapproved QR orders from this session are cancelled
+      db.prepare(`
+        UPDATE orders
+        SET approval_status = 'rejected', status = 'cancelled', updated_at = ?
+        WHERE table_id = ? AND approval_status = 'pending_approval'
+      `).run(now(), table.id);
+    });
+
+    notifyKdsUpdate();
+    res.json({ success: true, message: 'Table session released and cleared' });
+  } catch (error: any) {
+    console.error('[API] Error releasing table session:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/snooze-qr-prompt', requirePermission('tables.view'), (req: Request, res: Response) => {
+  try {
+    const db = getDatabase();
+    const table = db.prepare('SELECT * FROM tables WHERE id = ?').get(req.params.id) as any;
+    if (!table) {
+      return res.status(404).json({ error: 'Table not found' });
+    }
+
+    const currentTime = now();
+    db.prepare(`
+      UPDATE tables
+      SET qr_session_started_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(currentTime, currentTime, table.id);
+
+    res.json({ success: true, message: 'Check-in snoozed for 5 minutes' });
+  } catch (error: any) {
+    console.error('[API] Error snoozing QR prompt:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

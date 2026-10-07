@@ -5,7 +5,7 @@ import CustomerSearch from './CustomerSearch';
 import { useCartStore } from '@/store/cart';
 import { useAuthStore } from '@/store/auth';
 import { usePosSettingsStore } from '@/store/pos-settings';
-import { Banknote, LayoutGrid, Maximize2, Minimize2, LockOpen, Lock } from 'lucide-react';
+import { Banknote, LayoutGrid, Maximize2, Minimize2, LockOpen, Lock, Bell, Clock } from 'lucide-react';
 import type { Table } from '@/lib/types';
 import { useTranslations } from 'use-intl';
 
@@ -20,9 +20,13 @@ interface Props {
   canUseShift: boolean;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
+  pendingQrCount?: number;
+  onShowQrOrders?: () => void;
+  idleQrCount?: number;
+  onShowIdleTables?: () => void;
 }
 
-export default function PosTopbar({ tables, onShowTablePicker, onShowCashMovement, onShowShift, shiftHasOpenSession, shiftLoading, shiftError, canUseShift, fullscreen, onToggleFullscreen }: Props) {
+export default function PosTopbar({ tables, onShowTablePicker, onShowCashMovement, onShowShift, shiftHasOpenSession, shiftLoading, shiftError, canUseShift, fullscreen, onToggleFullscreen, pendingQrCount, onShowQrOrders, idleQrCount, onShowIdleTables }: Props) {
   const cart = useCartStore();
   const { currentTenant } = useAuthStore();
   const tablesRequired = usePosSettingsStore((s) => s.tablesRequired);
@@ -51,6 +55,32 @@ export default function PosTopbar({ tables, onShowTablePicker, onShowCashMovemen
           {cart.tableId
             ? t('tableLabel', { name: tables.find(t => t.id === cart.tableId)?.name || cart.tableId })
             : t('selectTable')}
+        </button>
+      )}
+
+      {/* QR Dine-In Orders Pending Approval Badge */}
+      {pendingQrCount !== undefined && pendingQrCount > 0 && (
+        <button
+          type="button"
+          onClick={onShowQrOrders}
+          className="touch-target shrink-0 gap-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white px-3 py-1.5 text-sm font-bold shadow-md transition-all animate-pulse whitespace-nowrap flex items-center"
+          title="QR Orders Pending Waiter Approval"
+        >
+          <Bell size={15} />
+          <span>{pendingQrCount} QR Order{pendingQrCount > 1 ? 's' : ''}</span>
+        </button>
+      )}
+
+      {/* Idle QR Tables (Browsing > 5m without ordering) Badge */}
+      {idleQrCount !== undefined && idleQrCount > 0 && (
+        <button
+          type="button"
+          onClick={onShowIdleTables}
+          className="touch-target shrink-0 gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white px-3 py-1.5 text-sm font-bold shadow-md transition-all whitespace-nowrap flex items-center"
+          title="Tables browsing > 5 minutes without ordering - check in needed"
+        >
+          <Clock size={15} />
+          <span>{idleQrCount} Table{idleQrCount > 1 ? 's' : ''} Need Check-In</span>
         </button>
       )}
 

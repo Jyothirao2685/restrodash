@@ -50,6 +50,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   if (req.method === 'POST' && reqPath === '/api/support-ticket/pre-login') { next(); return; }
   if (req.method === 'GET' && reqPath === '/api/support-ticket/pre-login/profile') { next(); return; }
   if (req.method === 'GET' && /^\/api\/support-ticket\/pre-login\/[0-9a-f-]{36}\/status$/i.test(reqPath)) { next(); return; }
+  // Public QR customer menu & dine-in ordering routes (rate-limited and session-keyed)
+  if (reqPath.startsWith('/api/public/')) { next(); return; }
 
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {

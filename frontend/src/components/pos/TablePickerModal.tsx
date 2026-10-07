@@ -98,6 +98,11 @@ export default function TablePickerModal({
                     #{(table.current_order || table.activeOrder)?.order_number}
                   </p>
                 )}
+                {table.status === 'occupied' && !table.current_order && !table.activeOrder && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">
+                    📱 QR Browsing
+                  </p>
+                )}
                 {table.status === 'occupied' && table.seated_at && (
                   <div className="mt-1"><TableTurnoverBadge seatedAt={table.seated_at} /></div>
                 )}

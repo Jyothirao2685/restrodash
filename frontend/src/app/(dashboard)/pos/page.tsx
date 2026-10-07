@@ -24,6 +24,10 @@ import TableCheckoutModal from '@/components/pos/TableCheckoutModal';
 import PaymentModal from '@/components/pos/PaymentModal';
 import PrepaidCheckoutModal, { type PrepaidPayment, type PrepaidDiscount } from '@/components/pos/PrepaidCheckoutModal';
 import PosTopbar from '@/components/pos/PosTopbar';
+import QrOrderApprovalModal from '@/components/pos/QrOrderApprovalModal';
+import { useQrOrders } from '@/hooks/useQrOrders';
+import { useIdleQrTables } from '@/hooks/useIdleQrTables';
+import { IdleTablePromptModal } from '@/components/pos/IdleTablePromptModal';
 import { ShiftOpenModal } from '@/components/dashboard/ShiftOpenModal';
 import { ShiftCloseModal } from '@/components/dashboard/ShiftCloseModal';
 import { useCashSession } from '@/hooks/useCashSession';
@@ -131,6 +135,10 @@ export default function POSPage() {
   const [checkoutOverridePin, setCheckoutOverridePin] = useState<string | undefined>();
   const [showCustomerPrompt, setShowCustomerPrompt] = useState(false);
   const [showPrepaidCheckout, setShowPrepaidCheckout] = useState(false);
+  const qrOrders = useQrOrders();
+  const [showQrModal, setShowQrModal] = useState(false);
+  const idleQrTables = useIdleQrTables();
+  const [showIdleModal, setShowIdleModal] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<Order | null>(null);
   const [supportError, setSupportError] = useState<{ title: string; subject: string; code: string; message: string; payload: Record<string, unknown> } | null>(null);
   const [sentTicketId, setSentTicketId] = useState<string | null>(null);
@@ -1183,6 +1191,10 @@ export default function POSPage() {
         canUseShift={canUseShift}
         fullscreen={fullscreen}
         onToggleFullscreen={toggleFullscreen}
+        pendingQrCount={qrOrders.pendingOrders.length}
+        onShowQrOrders={() => setShowQrModal(true)}
+        idleQrCount={idleQrTables.idleTables.length}
+        onShowIdleTables={() => setShowIdleModal(true)}
       />
 
       {/* Main content area */}
@@ -1327,6 +1339,52 @@ export default function POSPage() {
           onConfirm={handlePrepaidCheckout}
         />
       )}
+
+      {/* QR Dine-In Orders Pending Approval Modal */}
+      <QrOrderApprovalModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        orders={qrOrders.pendingOrders}
+        onApprove={async (id) => {
+          const ok = await qrOrders.approveOrder(id);
+          if (ok) {
+            try {
+              const { data } = await api.get('/tables?active=1');
+              setTables(data.tables || []);
+            } catch {}
+          }
+          return ok;
+        }}
+        onReject={async (id, reason) => {
+          const ok = await qrOrders.rejectOrder(id, reason);
+          if (ok) {
+            try {
+              const { data } = await api.get('/tables?active=1');
+              setTables(data.tables || []);
+            } catch {}
+          }
+          return ok;
+        }}
+      />
+
+      {/* Idle Tables Needing Check-in Modal */}
+      <IdleTablePromptModal
+        idleTables={idleQrTables.idleTables}
+        isOpen={showIdleModal}
+        onClose={() => setShowIdleModal(false)}
+        onSnooze={idleQrTables.snoozePrompt}
+        onRelease={async (tableId) => {
+          const ok = await idleQrTables.releaseTable(tableId);
+          if (ok) {
+            try {
+              const { data } = await api.get('/tables?active=1');
+              setTables(data.tables || []);
+            } catch {}
+          }
+          return ok;
+        }}
+        loading={idleQrTables.loading}
+      />
 
     </>
   );
