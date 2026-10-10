@@ -9,6 +9,7 @@ const http = require('http');
 const httpProxy = require('http-proxy');
 const path = require('path');
 const fs = require('fs');
+const net = require('net');
 const { spawn } = require('child_process');
 
 const PORT = process.env.PORT || 3000;
@@ -25,14 +26,45 @@ proxy.on('error', (err, req, res) => {
     res.writeHead(502, { 'Content-Type': 'text/html' });
     res.end(`
       <html>
-        <body style="font-family:sans-serif;padding:60px;text-align:center;background:#ffffff;color:#181d26;">
-          <h2 style="font-weight:500;">Restaurant Instance Starting Up...</h2>
-          <p style="color:#41454d;">The POS engine is booting up on this server. Please refresh in 5 seconds.</p>
+        <head><title>Starting Restaurant Instance...</title></head>
+        <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:60px 20px;text-align:center;background:#ffffff;color:#181d26;">
+          <h2 style="font-weight:600;font-size:20px;margin-bottom:8px;">Restaurant Instance Initializing...</h2>
+          <p style="color:#64748b;font-size:14px;margin-bottom:20px;">The dedicated POS engine is starting up. This page will refresh automatically in a few seconds.</p>
+          <script>setTimeout(function(){ window.location.reload(); }, 4000);</script>
         </body>
       </html>
     `);
   }
 });
+
+function isPortOpen(port) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(250);
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, '127.0.0.1');
+  });
+}
+
+async function waitForPort(port, timeoutMs = 4000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await isPortOpen(port)) return true;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return false;
+}
 
 function findPosEngineDir() {
   const candidates = [
@@ -119,11 +151,21 @@ function ensureTenantRunning(tenant) {
     detached: true,
   });
 
+  child.on('error', (err) => {
+    console.error(`[Router] Process error for "${tenant.subdomain}":`, err.message);
+    activeProcesses.delete(tenant.subdomain);
+  });
+
+  child.on('exit', (code, signal) => {
+    console.warn(`[Router] Process for "${tenant.subdomain}" exited (code ${code}, signal ${signal})`);
+    activeProcesses.delete(tenant.subdomain);
+  });
+
   child.unref();
   activeProcesses.set(tenant.subdomain, child);
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const host = (req.headers.host || '').split(':')[0].toLowerCase();
   const isApex = host === 'restrodash.in' || host === 'www.restrodash.in' || host === 'localhost';
 
@@ -140,10 +182,28 @@ const server = http.createServer((req, res) => {
   }
 
   ensureTenantRunning(tenant);
+
+  // Wait up to 3.5s for the tenant server to be listening
+  const isReady = await waitForPort(tenant.ports.api, 3500);
+
+  if (!isReady) {
+    res.writeHead(502, { 'Content-Type': 'text/html' });
+    return res.end(`
+      <html>
+        <head><title>Starting Restaurant Instance...</title></head>
+        <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:60px 20px;text-align:center;background:#ffffff;color:#181d26;">
+          <h2 style="font-weight:600;font-size:20px;margin-bottom:8px;">Restaurant Instance Initializing...</h2>
+          <p style="color:#64748b;font-size:14px;margin-bottom:20px;">The dedicated POS engine for <strong>${tenant.subdomain}</strong> is starting up. Refreshing automatically in 3 seconds...</p>
+          <script>setTimeout(function(){ window.location.reload(); }, 3000);</script>
+        </body>
+      </html>
+    `);
+  }
+
   proxy.web(req, res, { target: `http://127.0.0.1:${tenant.ports.api}` });
 });
 
-server.on('upgrade', (req, socket, head) => {
+server.on('upgrade', async (req, socket, head) => {
   const host = (req.headers.host || '').split(':')[0].toLowerCase();
   const isApex = host === 'restrodash.in' || host === 'www.restrodash.in' || host === 'localhost';
 
@@ -157,7 +217,12 @@ server.on('upgrade', (req, socket, head) => {
 
   if (tenant) {
     const targetPort = req.url.startsWith('/kds') ? tenant.ports.kds : tenant.ports.api;
-    proxy.ws(req, socket, head, { target: `http://127.0.0.1:${targetPort}` });
+    const isReady = await waitForPort(targetPort, 2000);
+    if (isReady) {
+      proxy.ws(req, socket, head, { target: `http://127.0.0.1:${targetPort}` });
+    } else {
+      socket.destroy();
+    }
   } else {
     socket.destroy();
   }
