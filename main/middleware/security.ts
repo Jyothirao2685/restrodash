@@ -403,9 +403,15 @@ export const corsOptions = {
 
     try {
       const parsedOrigin = new URL(origin);
-      const hostname = parsedOrigin.hostname;
+      const hostname = parsedOrigin.hostname.toLowerCase();
 
-      if (hostname === 'localhost' || hostname.endsWith('.local') || isAllowedPrivateIp(hostname)) {
+      if (
+        hostname === 'localhost' ||
+        hostname === 'restrodash.in' ||
+        hostname.endsWith('.restrodash.in') ||
+        hostname.endsWith('.local') ||
+        isAllowedPrivateIp(hostname)
+      ) {
         return callback(null, true);
       }
       
