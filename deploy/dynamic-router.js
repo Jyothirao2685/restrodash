@@ -12,9 +12,8 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 
 const PORT = process.env.PORT || 3000;
-const SAAS_PORT = 3005; // Next.js portal runs internally on port 3005
+const SAAS_PORT = 3005;
 
-// Create proxy server with WebSocket support
 const proxy = httpProxy.createProxyServer({
   ws: true,
   xfwd: true,
@@ -26,16 +25,15 @@ proxy.on('error', (err, req, res) => {
     res.writeHead(502, { 'Content-Type': 'text/html' });
     res.end(`
       <html>
-        <body style="font-family:sans-serif;padding:40px;text-align:center;background:#ffffff;color:#181d26;">
+        <body style="font-family:sans-serif;padding:60px;text-align:center;background:#ffffff;color:#181d26;">
           <h2 style="font-weight:500;">Restaurant Instance Starting Up...</h2>
-          <p style="color:#41454d;">The POS engine is initializing for this subdomain. Please refresh in a few seconds.</p>
+          <p style="color:#41454d;">The POS engine is booting up on this server. Please refresh in 5 seconds.</p>
         </body>
       </html>
     `);
   }
 });
 
-// Locate pos-engine directory robustly
 function findPosEngineDir() {
   const candidates = [
     '/opt/restrodash/pos-engine',
@@ -48,22 +46,21 @@ function findPosEngineDir() {
       return dir;
     }
   }
-  return candidates[0];
+  return '/opt/restrodash/pos-engine';
 }
 
-// Locate instances directory robustly
 function findInstancesDir() {
   const candidates = [
     path.resolve(__dirname, '../instances'),
+    '/opt/restrodash/saas/instances',
     '/opt/restrodash/instances',
-    path.resolve(__dirname, '../../instances'),
   ];
   for (const dir of candidates) {
     if (fs.existsSync(path.join(dir, 'registry.json'))) {
       return dir;
     }
   }
-  return candidates[0];
+  return path.resolve(__dirname, '../instances');
 }
 
 function getTenantRecord(subdomain) {
@@ -79,7 +76,6 @@ function getTenantRecord(subdomain) {
   }
 }
 
-// Active spawned child processes
 const activeProcesses = new Map();
 
 function ensureTenantRunning(tenant) {
@@ -93,7 +89,10 @@ function ensureTenantRunning(tenant) {
     return;
   }
 
+  const workspaceDir = tenant.workspacePath || path.join(findInstancesDir(), tenant.subdomain);
+
   console.log(`[Router] Spawning POS instance for "${tenant.subdomain}" on port ${tenant.ports.api}...`);
+  console.log(`  • Workspace (DB): ${workspaceDir}`);
 
   const env = {
     ...process.env,
@@ -101,14 +100,22 @@ function ensureTenantRunning(tenant) {
     PORT: String(tenant.ports.api),
     KDS_PORT: String(tenant.ports.kds),
     SERVER_APP_PORT: String(tenant.ports.serverApp),
+    FLO_DEV_USER_DATA: workspaceDir,
     FLO_E2E_DB_PATH: tenant.dbPath,
     DATABASE_PATH: tenant.dbPath,
   };
 
+  const logDir = '/opt/restrodash/logs';
+  if (!fs.existsSync(logDir)) {
+    try { fs.mkdirSync(logDir, { recursive: true }); } catch {}
+  }
+  const outLog = path.join(logDir, `${tenant.subdomain}.log`);
+  const outStream = fs.openSync(outLog, 'a');
+
   const child = spawn(process.execPath, [posScript], {
     env,
     cwd: posEngineDir,
-    stdio: 'inherit',
+    stdio: ['ignore', outStream, outStream],
     detached: true,
   });
 
@@ -116,35 +123,26 @@ function ensureTenantRunning(tenant) {
   activeProcesses.set(tenant.subdomain, child);
 }
 
-// Main HTTP Server
 const server = http.createServer((req, res) => {
   const host = (req.headers.host || '').split(':')[0].toLowerCase();
-
-  // Check if request is for apex domain
   const isApex = host === 'restrodash.in' || host === 'www.restrodash.in' || host === 'localhost';
 
   if (isApex) {
     return proxy.web(req, res, { target: `http://127.0.0.1:${SAAS_PORT}` });
   }
 
-  // Extract subdomain: e.g. "olivebistro" from "olivebistro.restrodash.in"
   const subdomain = host.replace('.restrodash.in', '');
   const tenant = getTenantRecord(subdomain);
 
   if (!tenant) {
-    // Unknown subdomain -> redirect to main portal
     res.writeHead(302, { Location: 'https://restrodash.in' });
     return res.end();
   }
 
-  // Auto-start tenant instance if not already running
   ensureTenantRunning(tenant);
-
-  // Proxy to the tenant's specific POS API port
   proxy.web(req, res, { target: `http://127.0.0.1:${tenant.ports.api}` });
 });
 
-// WebSocket upgrade handler (for KDS & table cart sync)
 server.on('upgrade', (req, socket, head) => {
   const host = (req.headers.host || '').split(':')[0].toLowerCase();
   const isApex = host === 'restrodash.in' || host === 'www.restrodash.in' || host === 'localhost';
