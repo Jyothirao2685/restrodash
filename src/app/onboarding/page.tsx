@@ -671,7 +671,7 @@ export default function OnboardingPage() {
 
                 <div className="space-y-3">
                   <a
-                    href={`http://localhost:${provisionedData.ports.api || 3001}/dashboard`}
+                    href={`https://${provisionedData.subdomain}.restrodash.in/dashboard`}
                     target="_blank"
                     rel="noreferrer"
                     className="btn-primary w-full text-center justify-center py-3.5 text-[15px]"
