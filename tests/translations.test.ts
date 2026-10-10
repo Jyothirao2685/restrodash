@@ -1615,7 +1615,7 @@ function thFallbackErrors(thFlat: Record<string, string>, enFlat: Record<string,
 
 /** Nepali translation safeguards. */
 const NE_INTENTIONAL_IDENTICAL = new Set<string>([
-  'auth.emailPlaceholder', 'dashboard.exportCsv', 'dashboard.ticketMethodCount',
+  'auth.emailPlaceholder', 'common.appTitle', 'common.brandName', 'dashboard.exportCsv', 'dashboard.ticketMethodCount',
   'kds.emptyColumn', 'nav.kds', 'nav.pos', 'pos.addonPrice', 'pos.loadingEllipsis',
   'pos.tagCount', 'pos.taxLine', 'printTest.escpos', 'print.hsn',
   'print.zReport.paymentCount', 'products.addonSelectionRange', 'products.fieldSku',

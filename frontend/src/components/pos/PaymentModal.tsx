@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Wallet, ArrowLeftRight, CheckCircle2, Sparkles, User, Percent, Send, ChevronDown } from 'lucide-react';
+import { X, Wallet, ArrowLeftRight, CheckCircle2, Sparkles, Percent, Send, ChevronDown, QrCode, Calculator, Printer, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -35,7 +35,7 @@ interface Props {
   currency: string;
   initialOverridePin?: string;
   onClose: () => void;
-  onPaid: () => void;
+  onPaid: (opts?: { printReceipt?: boolean }) => void;
   onBillUpdate?: (bill: Bill) => void;
 }
 
@@ -101,9 +101,14 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
   const [justPaid, setJustPaid] = useState(false);
   const [sendingWa, setSendingWa] = useState(false);
   const [pointsEarned, setPointsEarned] = useState(0);
-  const [payments, setPayments] = useState<Payment[]>(
-    PAYMENT_METHODS.map((method) => ({ method: method.key, amount: '' })),
-  );
+  const [payments, setPayments] = useState<Payment[]>(() => {
+    const displayRem = toDisplayUnit(remaining);
+    return PAYMENT_METHODS.map((method, index) => ({
+      method: method.key,
+      amount: index === 0 && displayRem > 0 ? String(displayRem) : '',
+    }));
+  });
+  const [showKeypad, setShowKeypad] = useState(false);
   // Tracks whether the cashier has manually typed a split amount — once true, we stop
   // auto-rescaling payment splits (e.g. on discount edits) so we don't clobber their entry.
   const [paymentsTouched, setPaymentsTouched] = useState(false);
@@ -196,13 +201,24 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
       .then((res) => {
         const methods: CustomPaymentMethod[] = res.data.payment_methods || [];
         setCustomMethods(methods);
-        setPayments((current) => [
-          ...PAYMENT_METHODS.map((method) => current.find((row) => row.method === method.key && row.payment_method_id === undefined) || { method: method.key, amount: '' }),
-          ...methods.map((method) => current.find((row) => row.payment_method_id === method.id) || { method: 'custom', payment_method_id: method.id, amount: '' }),
-        ]);
+        setPayments((current) => {
+          const displayRem = toDisplayUnit(remaining);
+          const hasManualEntry = current.some((p) => p.amount && parseFloat(p.amount) > 0 && parseFloat(p.amount) !== displayRem);
+          const merged = [
+            ...PAYMENT_METHODS.map((method) => current.find((row) => row.method === method.key && row.payment_method_id === undefined) || { method: method.key, amount: '' }),
+            ...methods.map((method) => current.find((row) => row.payment_method_id === method.id) || { method: 'custom', payment_method_id: method.id, amount: '' }),
+          ];
+          if (!hasManualEntry && merged.length > 0 && displayRem > 0) {
+            const anyAmount = merged.some((p) => parseFloat(p.amount) > 0);
+            if (!anyAmount) {
+              merged[0].amount = String(displayRem);
+            }
+          }
+          return merged;
+        });
       })
       .catch(() => setCustomMethods([]));
-  }, [bill.customer_id, cartCustomerId]);
+  }, [bill.customer_id, cartCustomerId, remaining, toDisplayUnit]);
 
   const walletAmt = toStoredUnit(parseFloat(walletAmount) || 0);
   const totalPaymentMinor = payments.reduce((s, p) => s + toMinorUnits(toStoredUnit(parseFloat(p.amount) || 0)), 0) + toMinorUnits(walletAmt);
@@ -214,13 +230,39 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
     setPayments((current) => current.map((payment, index) => index === idx ? { ...payment, amount: value } : payment));
   };
 
-  const allocateRemainingTo = (idx: number) => {
-    const allocatedElsewhere = payments.reduce((sum, payment, index) => index === idx ? sum : sum + toStoredUnit(parseFloat(payment.amount) || 0), walletAmt);
-    const dueStored = Math.max(0, remaining - allocatedElsewhere);
-    const dueDisplay = toDisplayUnit(dueStored);
+  const handleSelectMethod = (idx: number) => {
     setPaymentsTouched(true);
-    setPayments(payments.map((payment, index) => index === idx ? { ...payment, amount: dueDisplay > 0 ? String(dueDisplay) : '' } : payment));
+    const displayRemaining = toDisplayUnit(remaining);
+    setPayments((current) =>
+      current.map((payment, index) => ({
+        ...payment,
+        amount: index === idx ? (displayRemaining > 0 ? String(displayRemaining) : '') : '',
+      }))
+    );
+    setWalletAmount('');
+    setAmountTarget({ kind: 'payment', index: idx });
   };
+
+  const cashIndex = payments.findIndex((p) => p.method === 'cash' && p.payment_method_id === undefined);
+  const activePaymentIsCash = cashIndex !== -1 && (parseFloat(payments[cashIndex]?.amount || '0') > 0 || payments.every((p) => !parseFloat(p.amount)));
+  const cashPayment = cashIndex !== -1 ? payments[cashIndex] : null;
+
+  const quickCashAmounts = (() => {
+    const due = toDisplayUnit(remaining);
+    if (due <= 0) return [];
+    const rounded = Math.ceil(due);
+    const options = new Set<number>();
+    options.add(rounded);
+    const step50 = Math.ceil(due / 50) * 50;
+    if (step50 > due) options.add(step50);
+    const step100 = Math.ceil(due / 100) * 100;
+    if (step100 > due) options.add(step100);
+    const step500 = Math.ceil(due / 500) * 500;
+    if (step500 > due) options.add(step500);
+    const step1000 = Math.ceil(due / 1000) * 1000;
+    if (step1000 > due) options.add(step1000);
+    return Array.from(options).sort((a, b) => a - b).slice(0, 4);
+  })();
 
   const activeAmountValue = amountTarget?.kind === 'payment'
     ? payments[amountTarget.index]?.amount || ''
@@ -333,7 +375,7 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
     }
   };
 
-  const handlePay = async () => {
+  const handlePay = async (opts?: { printAfter?: boolean }) => {
     const decimalPart = unitAdapter.maxDecimals > 0 ? `(?:\\.\\d{1,${unitAdapter.maxDecimals}})?` : '';
     const amountPattern = new RegExp(`^\\d+${decimalPart}$`);
     const amountIsValid = (value: string) => value.trim() === '' || amountPattern.test(value.trim());
@@ -413,6 +455,10 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
       } else {
         toast.success(t('paymentRecorded'));
       }
+      if (opts?.printAfter) {
+        onPaid({ printReceipt: true });
+        return;
+      }
       setJustPaid(true);
     } catch (error: unknown) {
       const response = (error as { response?: { data?: { code?: string; error?: string; undeliveredCount?: number; undeliveredItems?: unknown } } } | null)?.response?.data;
@@ -475,17 +521,17 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-card w-full sm:max-w-4xl sm:max-h-[95vh] sm:flex sm:flex-col rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden">
+      <div className="bg-card w-full sm:max-w-4xl sm:max-h-[95vh] sm:flex sm:flex-col rounded-lg border border-border shadow-xl overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border">
+        <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border font-mono">
           <div>
-            <h2 className="text-lg font-bold text-foreground">{t('payment')}</h2>
+            <h2 className="text-base font-bold uppercase tracking-tight text-foreground">{t('payment')}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">{t('billNumber', { number: bill.bill_number })}</p>
           </div>
           <button
             onClick={onClose}
-            className="touch-target rounded-full bg-muted hover:bg-muted active:bg-muted text-muted-foreground transition-colors"
+            className="p-1 rounded-sm border border-border text-muted-foreground hover:bg-muted transition-colors"
             aria-label={t('close')}
           >
             <X size={16} />
@@ -516,30 +562,28 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
 
           <div className="space-y-4">
 
-          {/* Amount + Customer Card */}
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl px-5 py-4 text-white">
-            <div className="flex items-start justify-between mb-3">
+          {/* Amount + Direct Pricing Calculation */}
+          <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 text-foreground font-mono">
+            <div className="flex items-start justify-between mb-2">
               <div>
-                <p className="text-xs font-medium text-slate-400 uppercase tracking-widest">{t('totalDue')}</p>
-                <p className="text-4xl font-bold mt-1 tracking-tight">{currencyFmt(remaining)}</p>
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">{t('totalDue')}</p>
+                <p className="text-3xl font-bold tracking-tight text-foreground">{currencyFmt(remaining)}</p>
               </div>
               {cartCustomer && (
                 <div className="text-end ms-4 shrink-0">
-                  <div className="w-8 h-8 rounded-full bg-card/10 flex items-center justify-center mb-1 ms-auto">
-                    <User size={16} className="text-white/70" />
-                  </div>
-                  <p className="text-sm font-semibold text-white leading-tight">{cartCustomer.name}</p>
+                  <p className="text-xs font-bold text-foreground">{cartCustomer.name}</p>
+                  {cartCustomer.phone && <p className="text-[11px] text-muted-foreground">{cartCustomer.phone}</p>}
                 </div>
               )}
             </div>
 
-            <div className="border-t border-white/10 pt-3 space-y-1.5 text-xs">
-              <div className="flex justify-between text-slate-300">
+            <div className="border-t border-border/80 pt-2 space-y-1 text-xs font-mono">
+              <div className="flex justify-between text-muted-foreground">
                 <span>{t('subtotal')}</span>
-                <span>{currencyFmt(Number(bill.subtotal))}</span>
+                <span className="text-foreground">{currencyFmt(Number(bill.subtotal))}</span>
               </div>
               {Number(bill.discount_amount) > 0 && (
-                <div className="flex justify-between text-emerald-400 font-medium">
+                <div className="flex justify-between text-foreground font-medium">
                   <span>{t('discount')}</span>
                   <span>− {currencyFmt(Number(bill.discount_amount))}</span>
                 </div>
@@ -549,30 +593,30 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
                 rate: component.rate ?? 0,
               }))} />
               {Number(bill.delivery_charge) > 0 && (
-                <div className="flex justify-between text-slate-300">
+                <div className="flex justify-between text-muted-foreground">
                   <span>{t('delivery')}</span>
-                  <span>{currencyFmt(Number(bill.delivery_charge))}</span>
+                  <span className="text-foreground">{currencyFmt(Number(bill.delivery_charge))}</span>
                 </div>
               )}
               {Number(bill.packaging_charge) > 0 && (
-                <div className="flex justify-between text-slate-300">
+                <div className="flex justify-between text-muted-foreground">
                   <span>{t('packaging')}</span>
-                  <span>{currencyFmt(Number(bill.packaging_charge))}</span>
+                  <span className="text-foreground">{currencyFmt(Number(bill.packaging_charge))}</span>
                 </div>
               )}
               {Number(bill.service_charge) > 0 && (
-                <div className="flex justify-between text-slate-300">
+                <div className="flex justify-between text-muted-foreground">
                   <span>{tReceipt('serviceCharge')}</span>
-                  <span>{currencyFmt(Number(bill.service_charge))}</span>
+                  <span className="text-foreground">{currencyFmt(Number(bill.service_charge))}</span>
                 </div>
               )}
               {Number(bill.round_off) !== 0 && (
-                <div className="flex justify-between text-slate-300">
+                <div className="flex justify-between text-muted-foreground">
                   <span>{t('roundOff')}</span>
-                  <span>{Number(bill.round_off) > 0 ? '+' : ''}{currencyFmt(Number(bill.round_off))}</span>
+                  <span className="text-foreground">{Number(bill.round_off) > 0 ? '+' : ''}{currencyFmt(Number(bill.round_off))}</span>
                 </div>
               )}
-              <div className="flex justify-between text-white font-semibold border-t border-white/10 pt-1.5 mt-1">
+              <div className="flex justify-between text-foreground font-bold border-t border-border pt-1 mt-1 text-sm">
                 <span>{t('total')}</span>
                 <span>{currencyFmt(Number(bill.total))}</span>
               </div>
@@ -688,23 +732,32 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
               const builtIn = PAYMENT_METHODS.find((method) => method.key === payment.method && payment.payment_method_id === undefined);
               const custom = customMethods.find((method) => method.id === payment.payment_method_id);
               const label = builtIn ? t(BUILT_IN_PAYMENT_KEYS[builtIn.key]) : custom?.name || tCommon('unknown');
-              const Icon = builtIn?.icon;
+              const Icon = builtIn?.icon || (custom?.name.toLowerCase().includes('upi') || custom?.name.toLowerCase().includes('qr') ? QrCode : null);
               const active = (parseFloat(payment.amount) || 0) > 0;
-              return <div key={payment.payment_method_id === undefined ? payment.method : `custom:${payment.payment_method_id}`} className="flex min-h-12">
-                <button type="button" title={label} onClick={() => { setAmountTarget({ kind: 'payment', index: idx }); allocateRemainingTo(idx); }} className={`touch-target w-36 shrink-0 justify-start rounded-s-xl border px-3 gap-2 text-sm font-semibold transition-colors ${active ? 'bg-brand text-white border-brand' : 'bg-muted text-foreground border-border hover:border-brand hover:text-brand'}`}>
-                  {Icon && <Icon size={15} />}
+              return <div key={payment.payment_method_id === undefined ? payment.method : `custom:${payment.payment_method_id}`} className="flex min-h-11">
+                <button
+                  type="button"
+                  title={label}
+                  onClick={() => handleSelectMethod(idx)}
+                  className={`touch-target w-36 shrink-0 justify-start rounded-s-sm border px-3 gap-2 text-xs font-mono font-bold transition-colors ${
+                    active ? 'bg-foreground text-background border-foreground' : 'bg-muted/40 text-foreground border-border hover:bg-muted'
+                  }`}
+                >
+                  {Icon && <Icon size={14} />}
                   <span className="truncate">{label}</span>
                 </button>
-                <div className="flex flex-1 items-center border border-s-0 border-border rounded-e-xl bg-card focus-within:ring-2 focus-within:ring-brand focus-within:border-transparent">
-                  <span className="ps-3 text-muted-foreground text-xs">{inputCurrencyLabel}</span>
+                <div className="flex flex-1 items-center border border-s-0 border-border rounded-e-sm bg-card focus-within:ring-1 focus-within:ring-foreground">
+                  <span className="ps-3 text-muted-foreground text-xs font-mono">{inputCurrencyLabel}</span>
                   <input
                     type="number"
                     value={payment.amount}
-                    onFocus={() => setAmountTarget({ kind: 'payment', index: idx })}
+                    onFocus={() => {
+                      setAmountTarget({ kind: 'payment', index: idx });
+                    }}
                     onChange={(e) => updatePaymentAmount(idx, e.target.value)}
                     placeholder="0.00"
                     inputMode="decimal"
-                    className="min-w-0 flex-1 px-2 py-2 text-end text-base font-semibold outline-none rounded-e-xl"
+                    className="min-w-0 flex-1 px-2 py-2 text-end text-base font-mono font-bold outline-none rounded-e-sm"
                     step={inputCurrencyStep}
                     min="0"
                   />
@@ -712,6 +765,34 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
               </div>;
             })}
           </div>
+
+          {/* Quick Cash suggestions for rapid 1-click cash tendering */}
+          {activePaymentIsCash && (
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              <span className="text-xs text-muted-foreground me-1 font-medium">Quick Cash:</span>
+              {quickCashAmounts.map((amt) => {
+                const isSelected = parseFloat(cashPayment?.amount || '0') === amt;
+                return (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => {
+                      if (cashIndex !== -1) {
+                        updatePaymentAmount(cashIndex, String(amt));
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                      isSelected
+                        ? 'bg-brand text-white border-brand shadow-sm'
+                        : 'bg-muted/70 hover:bg-muted text-foreground border-border hover:border-brand/40'
+                    }`}
+                  >
+                    {amt === toDisplayUnit(remaining) ? `Exact (${currencyFmt(amt)})` : currencyFmt(amt)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Change Returned */}
           {hasCash && (
@@ -783,14 +864,26 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
               <p className="px-1 text-[11px] text-muted-foreground text-end">{walletBalance > 0 ? t('pointsApproxValue', { count: fmtNum(walletBalance), value: currencyFmt(Math.floor(walletBalance / LOYALTY_REDEMPTION_RATE)) }) : t('noBalance')}</p>
             </div>
           )}
-          {amountTarget && (
+
+          {/* Toggle Keypad / Split entry */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setShowKeypad(!showKeypad)}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors py-1 font-medium"
+            >
+              <Calculator size={13} />
+              <span>{showKeypad ? 'Hide Keypad' : 'Split Payment / Show Keypad'}</span>
+            </button>
+          </div>
+
+          {showKeypad && amountTarget && (
             <CurrencyTouchNumberPad
               value={activeAmountValue}
               onChange={updateActiveAmount}
               ariaLabel={t('numericKeypad')}
               clearLabel={t('clearAmount')}
               backspaceLabel={t('backspaceAmount')}
-              // Percentage discounts are dimensionless rates, so they retain decimal input for zero-decimal currencies.
               currencyMaxDecimals={unitAdapter.maxDecimals}
               amountTarget={amountTarget.kind}
               discountType={discountType}
@@ -801,7 +894,7 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
           </div>
         </div>
 
-        <div className="px-5 pb-5 border-t border-border pt-3 space-y-2">
+        <div className="px-5 pb-5 border-t border-border pt-3 space-y-2 font-mono">
           {justPaid ? (
             <>
               {cartCustomer?.phone && (
@@ -809,7 +902,7 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
                   <Button
                     onClick={handleSendWhatsApp}
                     disabled={sendingWa}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 font-mono text-xs rounded-sm"
                     size="lg"
                   >
                     <Send size={16} className="me-2" />
@@ -819,7 +912,7 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
                   <Button
                     onClick={handleShareWhatsApp}
                     variant="outline"
-                    className="w-full"
+                    className="w-full font-mono text-xs rounded-sm"
                     size="lg"
                   >
                     <Send size={16} className="me-2" />
@@ -827,14 +920,36 @@ export default function PaymentModal({ bill, initialOverridePin, onClose, onPaid
                   </Button>
                 )
               )}
-              <Button onClick={onPaid} variant="outline" className="w-full" size="lg">
+              <Button onClick={() => onPaid({ printReceipt: true })} variant="outline" className="w-full font-mono text-xs border-border text-foreground hover:bg-muted rounded-sm" size="lg">
+                <Printer size={16} className="me-2" />
+                {tReceipt('printBill')}
+              </Button>
+              <Button onClick={() => onPaid({ printReceipt: false })} className="w-full bg-foreground text-background hover:bg-foreground/90 font-mono text-xs font-bold rounded-sm" size="lg">
                 {tCommon('done')}
               </Button>
             </>
           ) : (
-            <Button onClick={handlePay} disabled={processing || totalPaymentMinor < remainingMinor} className="w-full" size="lg">
-              {processing ? t('processingPayment') : `${t('pay')} ${currencyFmt(totalPayment)}`}
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                onClick={() => handlePay({ printAfter: true })}
+                disabled={processing || totalPaymentMinor < remainingMinor}
+                className="flex-1 font-mono text-xs font-bold bg-foreground text-background hover:bg-foreground/90 rounded-sm"
+                size="lg"
+              >
+                <Printer size={15} className="me-2" />
+                {processing ? t('processingPayment') : `Settle & Print (${currencyFmt(totalPayment)})`}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handlePay({ printAfter: false })}
+                disabled={processing || totalPaymentMinor < remainingMinor}
+                className="flex-1 font-mono text-xs font-bold border-border text-foreground hover:bg-muted rounded-sm"
+                size="lg"
+              >
+                <Check size={15} className="me-2" />
+                {processing ? t('processingPayment') : 'Settle Only (No Print)'}
+              </Button>
+            </div>
           )}
         </div>
       </div>

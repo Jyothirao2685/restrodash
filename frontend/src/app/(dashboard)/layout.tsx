@@ -6,6 +6,7 @@ import AuthGuard from '@/components/layout/AuthGuard';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import StatusBar from '@/components/layout/StatusBar';
 import GlobalNotifications from '@/components/layout/GlobalNotifications';
+import IncomingQrOrdersBar from '@/components/orders/IncomingQrOrdersBar';
 import TitleBar from '@/components/layout/TitleBar';
 import { usePrinterStatusSync } from '@/hooks/usePrinter';
 
@@ -29,6 +30,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <SidebarTrigger className="size-8" aria-label="Open navigation" />
             </div>
             {!isPos && <GlobalNotifications />}
+            <IncomingQrOrdersBar />
             <div className={isPos
               ? 'flex-1 min-h-0 flex flex-col overflow-hidden p-4'
               : isSettings

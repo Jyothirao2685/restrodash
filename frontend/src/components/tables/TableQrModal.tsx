@@ -76,7 +76,7 @@ export default function TableQrModal({ table, isOpen, onClose }: Props) {
     window.print();
   };
 
-  const storeName = currentTenant?.business_name || 'FloCafe';
+  const storeName = currentTenant?.business_name || 'Restro Dash';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">

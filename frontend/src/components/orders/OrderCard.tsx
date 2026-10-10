@@ -47,36 +47,26 @@ type OrdersKey = keyof AppConfig['Messages']['orders'];
 type WhatsAppStatusKey = keyof AppConfig['Messages']['whatsapp']['status'];
 
 const orderStatusBadge: Record<Order['status'], { bg: string; text: string; labelKey: OrdersKey }> = {
-  pending: { bg: 'bg-yellow-100 dark:bg-yellow-950/40', text: 'text-yellow-700 dark:text-yellow-300', labelKey: 'pending' },
-  preparing: { bg: 'bg-blue-100 dark:bg-blue-950/40', text: 'text-blue-700 dark:text-blue-300', labelKey: 'preparing' },
-  ready: { bg: 'bg-green-100 dark:bg-green-950/40', text: 'text-green-700 dark:text-green-300', labelKey: 'ready' },
-  served: { bg: 'bg-purple-100 dark:bg-purple-950/40', text: 'text-purple-700 dark:text-purple-300', labelKey: 'served' },
-  completed: { bg: 'bg-muted', text: 'text-muted-foreground', labelKey: 'completed' },
-  cancelled: { bg: 'bg-red-100 dark:bg-red-950/40', text: 'text-red-700 dark:text-red-300', labelKey: 'cancelled' },
+  pending: { bg: 'border-border/80 bg-muted/40', text: 'text-foreground', labelKey: 'pending' },
+  preparing: { bg: 'border-border/80 bg-muted/60', text: 'text-foreground', labelKey: 'preparing' },
+  ready: { bg: 'border-border bg-foreground text-background', text: 'text-background', labelKey: 'ready' },
+  served: { bg: 'border-border/80 bg-muted/40', text: 'text-foreground', labelKey: 'served' },
+  completed: { bg: 'border-border/50 bg-muted/20', text: 'text-muted-foreground', labelKey: 'completed' },
+  cancelled: { bg: 'border-red-300 bg-red-50/50 dark:bg-red-950/20', text: 'text-red-700 dark:text-red-300', labelKey: 'cancelled' },
 };
 
 const paymentStatusBadge: Record<'paid' | 'partial' | 'unpaid', { bg: string; text: string; labelKey: OrdersKey }> = {
-  paid: { bg: 'bg-green-100 dark:bg-green-950/40', text: 'text-green-700 dark:text-green-300', labelKey: 'paid' },
-  partial: { bg: 'bg-amber-100 dark:bg-amber-950/40', text: 'text-amber-700 dark:text-amber-300', labelKey: 'partiallyPaid' },
-  unpaid: { bg: 'bg-red-100 dark:bg-red-950/40', text: 'text-red-700 dark:text-red-300', labelKey: 'unpaidBadge' },
+  paid: { bg: 'border-border bg-foreground text-background', text: 'text-background', labelKey: 'paid' },
+  partial: { bg: 'border-border/80 bg-muted/60', text: 'text-foreground', labelKey: 'partiallyPaid' },
+  unpaid: { bg: 'border-border/80 bg-muted/30', text: 'text-muted-foreground', labelKey: 'unpaidBadge' },
 };
 
 const whatsappReceiptStatusBadge: Record<'sent' | 'partial' | 'pending' | 'failed' | 'notSent', { bg: string; text: string; labelKey: WhatsAppStatusKey }> = {
-  sent: { bg: 'bg-green-100 dark:bg-green-950/40', text: 'text-green-700 dark:text-green-300', labelKey: 'sent' },
-  partial: { bg: 'bg-amber-100 dark:bg-amber-950/40', text: 'text-amber-700 dark:text-amber-300', labelKey: 'partial' },
-  pending: { bg: 'bg-amber-100 dark:bg-amber-950/40', text: 'text-amber-700 dark:text-amber-300', labelKey: 'pending' },
-  failed: { bg: 'bg-red-100 dark:bg-red-950/40', text: 'text-red-700 dark:text-red-300', labelKey: 'failed' },
-  notSent: { bg: 'bg-muted', text: 'text-muted-foreground', labelKey: 'notSent' },
-};
-
-const itemStatusDot: Record<OrderItem['status'], { dot: string; labelKey: OrdersKey }> = {
-  pending: { dot: 'bg-yellow-400', labelKey: 'itemStatusWaiting' },
-  preparing: { dot: 'bg-blue-500', labelKey: 'itemStatusPreparing' },
-  ready: { dot: 'bg-green-500', labelKey: 'itemStatusReady' },
-  served: { dot: 'bg-purple-500', labelKey: 'itemStatusServed' },
-  cancelled: { dot: 'bg-red-400', labelKey: 'itemStatusCancelled' },
-  voided: { dot: 'bg-red-500', labelKey: 'itemStatusVoided' },
-  void_adjustment: { dot: 'bg-red-300', labelKey: 'itemStatusVoidAdjustment' },
+  sent: { bg: 'border-border/80 bg-muted/50', text: 'text-foreground', labelKey: 'sent' },
+  partial: { bg: 'border-border/80 bg-muted/50', text: 'text-foreground', labelKey: 'partial' },
+  pending: { bg: 'border-border/80 bg-muted/50', text: 'text-muted-foreground', labelKey: 'pending' },
+  failed: { bg: 'border-red-300 bg-red-50/40', text: 'text-red-600', labelKey: 'failed' },
+  notSent: { bg: 'border-border/50 bg-muted/20', text: 'text-muted-foreground', labelKey: 'notSent' },
 };
 
 const ORDER_TYPE_KEYS = {
@@ -104,6 +94,7 @@ interface OrderCardProps {
   linkCustomerResults?: Customer[];
   linkingCustomer?: boolean;
   onCheckout: (orderId: number) => void;
+  onUpdateStatus?: (orderId: number, status: string) => Promise<void> | void;
   onAddItems: (order: Order) => void;
   onRefund: (order: Order, bills: Bill[]) => void;
   onConvertToTakeaway: (order: Order) => void;
@@ -147,6 +138,7 @@ export function OrderCard({
   onRefund,
   onConvertToTakeaway,
   onCancelOrder,
+  onUpdateStatus,
   onPrint,
   onPrintOrder,
   onPrintDeliverySlip,
@@ -269,16 +261,50 @@ export function OrderCard({
         {/* Header Row 1: Order Number, Status Badges, Quick Actions */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
-            <span className="font-bold text-base text-foreground tracking-tight">
+            <span className="font-mono font-bold text-base text-foreground tracking-tight">
               #<Ltr>{order.order_number}</Ltr>
             </span>
-            {statusBadgeInfo && (
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${statusBadgeInfo.bg} ${statusBadgeInfo.text}`}>
+            {statusBadgeInfo && onUpdateStatus && order.status !== 'cancelled' ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="px-2 py-0.5 rounded-sm border border-border text-[11px] font-mono uppercase tracking-wide cursor-pointer hover:bg-muted transition-colors flex items-center gap-1 bg-background text-foreground"
+                    title="Click to update order status"
+                  >
+                    <span>{tOrders(statusBadgeInfo.labelKey)}</span>
+                    <ChevronDown size={11} className="opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44 font-mono text-xs">
+                  <DropdownMenuItem onClick={() => onUpdateStatus(order.id, 'preparing')}>
+                    Mark as Preparing
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onUpdateStatus(order.id, 'ready')}>
+                    Mark as Ready
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onUpdateStatus(order.id, 'served')}>
+                    Mark as Served
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onUpdateStatus(order.id, 'completed')}>
+                    Mark as Completed
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => onCancelOrder(order)}
+                    className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950/40"
+                  >
+                    Cancel Order
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : statusBadgeInfo ? (
+              <span className="px-2 py-0.5 rounded-sm border border-border text-[11px] font-mono uppercase tracking-wide bg-muted/40 text-foreground">
                 {tOrders(statusBadgeInfo.labelKey)}
               </span>
-            )}
+            ) : null}
             {payBadge && (
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${payBadge.bg} ${payBadge.text}`}>
+              <span className="px-2 py-0.5 rounded-sm border border-border text-[11px] font-mono uppercase tracking-wide bg-background text-muted-foreground">
                 {tOrders(payBadge.labelKey)}
               </span>
             )}
@@ -363,15 +389,15 @@ export function OrderCard({
         </div>
 
         {/* Header Row 2: Type, Table, Elapsed Time, WhatsApp Status */}
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground flex-wrap">
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground flex-wrap font-mono">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1 font-medium capitalize text-foreground">
+            <span className="inline-flex items-center gap-1 font-semibold uppercase text-foreground">
               {orderTypeIcon}
               {tOrders(ORDER_TYPE_KEYS[order.type])}
             </span>
 
             {order.table && (
-              <span className="font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded-md">
+              <span className="font-bold text-foreground border border-border bg-muted/60 px-1.5 py-0.5 rounded-sm">
                 {order.table.name}
               </span>
             )}
@@ -384,7 +410,7 @@ export function OrderCard({
 
           {receiptStatusBadge && (
             <span
-              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${receiptStatusBadge.bg} ${receiptStatusBadge.text}`}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-border text-muted-foreground text-[11px] rounded-sm"
             >
               {receiptStatusBadge.labelKey === 'sent' && <Send size={11} />}
               {receiptStatusBadge.labelKey === 'failed' && <AlertCircle size={11} />}
@@ -557,16 +583,11 @@ export function OrderCard({
         {/* Item list */}
         <div id={`order-items-${order.id}`} className="space-y-2">
           {displayedItems.map((item: OrderItem) => {
-            const dotConfig = itemStatusDot[item.status] || itemStatusDot.pending;
             return (
               <div key={item.id} className="text-xs">
                 <div className="flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${dotConfig.dot}`}
-                      title={tOrders(dotConfig.labelKey)}
-                    />
-                    <span className="font-semibold text-foreground shrink-0">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1 font-mono">
+                    <span className="font-bold text-foreground shrink-0">
                       {item.quantity}x
                     </span>
                     <span className="text-foreground truncate" title={item.product_name}>
@@ -783,7 +804,7 @@ export function OrderCard({
             <Info size={14} className="shrink-0 text-muted-foreground" />
             <span>{tOrders('noFurtherActions')}</span>
           </div>
-        ) : isPaid || order.status === 'completed' ? (
+        ) : isPaid ? (
           <div className="flex items-center gap-2">
             {/* Primary receipt action on POS: Print Thermal Receipt */}
             {bill && (
@@ -833,15 +854,15 @@ export function OrderCard({
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            {onPrintOrder && order.type === 'dine_in' && (
+            {(bill || onPrintOrder) && (
               <Button
                 variant="outline"
                 onClick={() => {
                   if (bill) onPrint(bill.id);
-                  else onPrintOrder(order);
+                  else if (onPrintOrder) onPrintOrder(order);
                 }}
                 disabled={(bill && printingBillId === bill.id) || generatingBillId === order.id}
-                className="h-10 px-3 justify-center border-border text-foreground hover:bg-muted active:scale-95 touch-manipulation font-semibold text-xs"
+                className="h-10 px-3 justify-center border-border text-foreground hover:bg-muted active:scale-95 touch-manipulation font-mono font-bold text-xs rounded-sm"
               >
                 {(bill && printingBillId === bill.id) || generatingBillId === order.id ? (
                   <Loader2 size={15} className="animate-spin me-1.5" />
@@ -854,11 +875,7 @@ export function OrderCard({
             <Button
               onClick={() => onCheckout(order.id)}
               disabled={generatingBillId === order.id}
-              className={`flex-1 h-10 justify-center active:scale-95 touch-manipulation font-semibold text-xs ${
-                payStatus === 'partial'
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                  : 'bg-foreground text-background hover:bg-foreground/90'
-              }`}
+              className="flex-1 h-10 justify-center active:scale-95 touch-manipulation font-mono font-bold text-xs bg-foreground text-background hover:bg-foreground/90 rounded-sm"
             >
               <CreditCard size={15} className="me-1.5" />
               {checkoutButtonLabel}
@@ -867,7 +884,7 @@ export function OrderCard({
             <Button
               variant="outline"
               onClick={() => onAddItems(order)}
-              className="flex-1 h-10 justify-center border-green-300 text-green-600 hover:bg-green-50 hover:text-green-700 dark:hover:bg-green-950/40 dark:border-green-800 active:scale-95 touch-manipulation font-semibold text-xs"
+              className="flex-1 h-10 justify-center border-border text-foreground hover:bg-muted active:scale-95 touch-manipulation font-mono font-semibold text-xs rounded-sm"
             >
               <Plus size={15} className="me-1.5" />
               {tOrders('addItem')}

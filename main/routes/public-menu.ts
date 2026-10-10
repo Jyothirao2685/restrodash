@@ -66,7 +66,8 @@ router.get('/table/:qrToken', publicMenuRateLimit, (req: Request, res: Response)
 
     const db = getDatabase();
     const table = db.prepare(`
-      SELECT id, number, capacity, qr_token, active_session_key, qr_session_started_at, qr_enabled, is_active, status
+      SELECT id, number, capacity, qr_token, active_session_key, qr_session_started_at,
+             qr_session_code, shared_cart_json, qr_enabled, is_active, status
       FROM tables
       WHERE qr_token = ?
     `).get(qrToken) as any;
@@ -76,6 +77,7 @@ router.get('/table/:qrToken', publicMenuRateLimit, (req: Request, res: Response)
     }
 
     const deviceSessionKey = (req.headers['x-device-session-key'] as string) || null;
+    const providedCode = (req.headers['x-table-session-code'] as string) || (req.query.code as string) || null;
 
     // Check for active orders for this table
     const activeOrders = db.prepare(`
@@ -86,75 +88,50 @@ router.get('/table/:qrToken', publicMenuRateLimit, (req: Request, res: Response)
       ORDER BY created_at DESC
     `).all(table.id) as any[];
 
-    // Session Lock & Occupancy Defense:
-    let isTableLocked = false;
-    let isOwner = false;
+    const hasActiveOrders = activeOrders.length > 0;
+    const sessionStartMs = table.qr_session_started_at
+      ? new Date(table.qr_session_started_at.replace(' ', 'T') + 'Z').getTime()
+      : 0;
+    const elapsedMinutes = sessionStartMs ? (Date.now() - sessionStartMs) / 60000 : 999;
 
-    if (activeOrders.length > 0) {
-      if (table.active_session_key) {
-        if (deviceSessionKey && deviceSessionKey === table.active_session_key) {
-          isOwner = true;
-          isTableLocked = false;
-        } else {
-          isTableLocked = true;
-        }
-      } else {
-        // Table has staff/manual active orders
-        isTableLocked = true;
+    let isHost = false;
+    let isJoined = false;
+    let sessionCode = table.qr_session_code;
+
+    // Start a new host session if no active host or idle >= 15 mins with no orders or table status is available
+    const shouldStartNewSession = !table.active_session_key || (!hasActiveOrders && (table.status === 'available' || elapsedMinutes >= 15));
+
+    if (shouldStartNewSession) {
+      if (deviceSessionKey) {
+        const currentTime = now();
+        sessionCode = String(Math.floor(1000 + Math.random() * 9000));
+        db.prepare(`
+          UPDATE tables
+          SET active_session_key = ?, qr_session_started_at = ?, qr_session_code = ?, shared_cart_json = '[]', status = 'occupied', updated_at = ?
+          WHERE id = ?
+        `).run(deviceSessionKey, currentTime, sessionCode, currentTime, table.id);
+        table.active_session_key = deviceSessionKey;
+        table.qr_session_started_at = currentTime;
+        table.qr_session_code = sessionCode;
+        table.shared_cart_json = '[]';
+        isHost = true;
+        isJoined = true;
       }
     } else {
-      // No active orders currently placed.
-      if (table.active_session_key) {
-        if (deviceSessionKey && deviceSessionKey === table.active_session_key) {
-          isOwner = true;
-          isTableLocked = false;
-        } else {
-          // Different device while a session is active without orders yet.
-          // Auto-expire idle sessions after 15 minutes of inactivity:
-          const sessionStartMs = table.qr_session_started_at
-            ? new Date(table.qr_session_started_at.replace(' ', 'T') + 'Z').getTime()
-            : 0;
-          const elapsedMinutes = sessionStartMs ? (Date.now() - sessionStartMs) / 60000 : 999;
-
-          if (elapsedMinutes >= 15) {
-            if (deviceSessionKey) {
-              const currentTime = now();
-              db.prepare('UPDATE tables SET active_session_key = ?, qr_session_started_at = ?, status = ?, updated_at = ? WHERE id = ?')
-                .run(deviceSessionKey, currentTime, 'occupied', currentTime, table.id);
-              table.active_session_key = deviceSessionKey;
-              table.qr_session_started_at = currentTime;
-              isOwner = true;
-            }
-            isTableLocked = false;
-          } else {
-            isTableLocked = true;
-          }
-        }
+      if (deviceSessionKey && deviceSessionKey === table.active_session_key) {
+        isHost = true;
+        isJoined = true;
+      } else if (providedCode && table.qr_session_code && providedCode.trim() === table.qr_session_code.trim()) {
+        isHost = false;
+        isJoined = true;
       } else {
-        // Table is free/available: new scan binds the session and starts the timer!
-        if (deviceSessionKey) {
-          const currentTime = now();
-          db.prepare('UPDATE tables SET active_session_key = ?, qr_session_started_at = ?, status = ?, updated_at = ? WHERE id = ?')
-            .run(deviceSessionKey, currentTime, 'occupied', currentTime, table.id);
-          table.active_session_key = deviceSessionKey;
-          table.qr_session_started_at = currentTime;
-          table.status = 'occupied';
-          isOwner = true;
-        }
-        isTableLocked = false;
+        isHost = false;
+        isJoined = false;
       }
-    }
-
-    if (isTableLocked) {
-      return res.json({
-        locked: true,
-        table_number: table.number,
-        reason: 'This table is currently occupied by another customer session. Please ask your server for assistance.',
-      });
     }
 
     // Load store / restaurant branding info
-    const storeName = getSettingValue('store_name') || getSettingValue('restaurant_name') || 'FloCafe';
+    const storeName = getSettingValue('store_name') || getSettingValue('restaurant_name') || 'Restro Dash';
     const storeAddress = getSettingValue('address') || '';
     const storePhone = getSettingValue('phone') || '';
     const currency = getTenantCurrency();
@@ -255,10 +232,10 @@ router.get('/table/:qrToken', publicMenuRateLimit, (req: Request, res: Response)
       }
     }
 
-    // Hydrate current customer orders if session matches
+    // Hydrate current table active orders for host or joined guests
     let customerActiveOrders: any[] = [];
-    if (isOwner && deviceSessionKey) {
-      customerActiveOrders = activeOrders.filter((o) => o.qr_device_session_key === deviceSessionKey).map((o) => {
+    if (isHost || isJoined) {
+      customerActiveOrders = activeOrders.map((o) => {
         const items = db.prepare(`
           SELECT id, product_name, quantity, unit_price, total, status, special_instructions
           FROM order_items
@@ -273,7 +250,11 @@ router.get('/table/:qrToken', publicMenuRateLimit, (req: Request, res: Response)
 
     res.json({
       locked: false,
-      is_owner: isOwner,
+      is_host: isHost,
+      is_joined: isJoined,
+      has_active_host: !isHost && Boolean(table.active_session_key),
+      session_code: (isHost || isJoined) ? table.qr_session_code : null,
+      table_number: table.number,
       restaurant: {
         name: storeName,
         address: storeAddress,
@@ -291,6 +272,7 @@ router.get('/table/:qrToken', publicMenuRateLimit, (req: Request, res: Response)
       addon_groups: hydratedAddonGroups,
       product_addon_groups: productGroupRelations,
       active_orders: customerActiveOrders,
+      shared_cart: table.shared_cart_json ? JSON.parse(table.shared_cart_json) : [],
     });
   } catch (error: any) {
     console.error('[Public Menu] Error loading menu:', error);
@@ -299,9 +281,93 @@ router.get('/table/:qrToken', publicMenuRateLimit, (req: Request, res: Response)
 });
 
 /**
+ * POST /api/public/table/:qrToken/join
+ * Lets a friend join an active table session using the 4-digit code.
+ */
+router.post('/table/:qrToken/join', publicMenuRateLimit, (req: Request, res: Response) => {
+  try {
+    const { qrToken } = req.params;
+    const { code } = req.body || {};
+    if (!qrToken || !code) {
+      return res.status(400).json({ error: 'Table token and 4-digit code are required' });
+    }
+    const db = getDatabase();
+    const table = db.prepare('SELECT id, number, qr_session_code, shared_cart_json FROM tables WHERE qr_token = ?').get(qrToken) as any;
+    if (!table) {
+      return res.status(404).json({ error: 'Table not found' });
+    }
+    if (!table.qr_session_code || table.qr_session_code.trim() !== String(code).trim()) {
+      return res.status(400).json({ error: 'Incorrect table code. Ask your friends at the table for the 4-digit code on their screen.' });
+    }
+    res.json({
+      success: true,
+      table_number: table.number,
+      session_code: table.qr_session_code,
+      shared_cart: table.shared_cart_json ? JSON.parse(table.shared_cart_json) : [],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to join table session' });
+  }
+});
+
+/**
+ * GET /api/public/table/:qrToken/cart
+ * Fetches the collaborative cart for all diners at this table.
+ */
+router.get('/table/:qrToken/cart', publicMenuRateLimit, (req: Request, res: Response) => {
+  try {
+    const { qrToken } = req.params;
+    const db = getDatabase();
+    const table = db.prepare('SELECT id, number, active_session_key, qr_session_code, shared_cart_json FROM tables WHERE qr_token = ?').get(qrToken) as any;
+    if (!table) return res.status(404).json({ error: 'Table not found' });
+    const deviceSessionKey = (req.headers['x-device-session-key'] as string) || null;
+    const isHost = Boolean(deviceSessionKey && deviceSessionKey === table.active_session_key);
+    res.json({
+      cart: table.shared_cart_json ? JSON.parse(table.shared_cart_json) : [],
+      is_host: isHost,
+      session_code: table.qr_session_code,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to fetch table cart' });
+  }
+});
+
+/**
+ * POST /api/public/table/:qrToken/cart
+ * Updates the shared collaborative table cart (host or joined friends).
+ */
+router.post('/table/:qrToken/cart', publicMenuRateLimit, (req: Request, res: Response) => {
+  try {
+    const { qrToken } = req.params;
+    const { cart } = req.body || {};
+    if (!Array.isArray(cart)) {
+      return res.status(400).json({ error: 'Cart must be an array of items' });
+    }
+    const db = getDatabase();
+    const table = db.prepare('SELECT id, number, active_session_key, qr_session_code FROM tables WHERE qr_token = ?').get(qrToken) as any;
+    if (!table) return res.status(404).json({ error: 'Table not found' });
+
+    const deviceSessionKey = (req.headers['x-device-session-key'] as string) || null;
+    const providedCode = (req.headers['x-table-session-code'] as string) || (req.body?.session_code as string) || (req.body?.code as string) || null;
+    const isHost = Boolean(deviceSessionKey && deviceSessionKey === table.active_session_key);
+    const isJoined = Boolean(providedCode && table.qr_session_code && providedCode.trim() === table.qr_session_code.trim());
+
+    if (!isHost && !isJoined) {
+      return res.status(403).json({ error: 'Enter the 4-digit table code to update the shared cart' });
+    }
+
+    const cartJson = JSON.stringify(cart);
+    db.prepare('UPDATE tables SET shared_cart_json = ?, updated_at = ? WHERE id = ?').run(cartJson, now(), table.id);
+    res.json({ success: true, cart });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update table cart' });
+  }
+});
+
+/**
  * POST /api/public/orders
  * Places a customer order from the QR menu.
- * Requires waiter/staff approval before kitchen display or printing.
+ * Only the Host can place the final order.
  */
 router.post('/orders', publicOrderRateLimit, (req: Request, res: Response) => {
   try {
@@ -331,24 +397,10 @@ router.post('/orders', publicOrderRateLimit, (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Table not found or QR ordering disabled' });
     }
 
-    // Check active orders and table session binding
-    const activeOrders = db.prepare(`
-      SELECT id, qr_device_session_key FROM orders
-      WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')
-    `).all(table.id) as any[];
-
-    if (activeOrders.length > 0) {
-      if (table.active_session_key && table.active_session_key !== session_key) {
-        return res.status(403).json({ error: 'Table is currently occupied by another guest session' });
-      }
-    } else {
-      // First order of a new session: bind session key and mark occupied
-      const currentTime = now();
-      db.prepare(`
-        UPDATE tables
-        SET active_session_key = ?, qr_session_started_at = COALESCE(qr_session_started_at, ?), status = 'occupied', updated_at = ?
-        WHERE id = ?
-      `).run(session_key, currentTime, currentTime, table.id);
+    if (table.active_session_key && table.active_session_key !== session_key) {
+      return res.status(403).json({
+        error: 'Only the Host (the first device that scanned) can place the order and checkout. Your items are saved in the shared table cart.',
+      });
     }
 
     // Settings for tax calculations
@@ -526,8 +578,8 @@ router.post('/orders', publicOrderRateLimit, (req: Request, res: Response) => {
         orderId,
       );
 
-      // Table stays occupied
-      db.prepare("UPDATE tables SET status = 'occupied', updated_at = ? WHERE id = ?")
+      // Table stays occupied and reset shared cart
+      db.prepare("UPDATE tables SET status = 'occupied', shared_cart_json = '[]', updated_at = ? WHERE id = ?")
         .run(now(), table.id);
 
       const createdOrder = parseRowJson(db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId)) as any;

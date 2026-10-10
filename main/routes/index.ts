@@ -78,32 +78,34 @@ export function registerRoutes(app: Express): void {
   app.use('/api/kitchen', kitchenRoutes);
   app.use('/api/bills', billRoutes);
   app.use('/api/refunds', refundRoutes);
-  app.use('/api/cash-closures', cashClosureRoutes);
-  app.use('/api/cash-sessions', cashSessionRoutes);
-  app.use('/api/inventory', inventoryRoutes);
-  app.use('/api/supplies', supplyRoutes);
-  app.use('/api/recipes', recipeRoutes);
+  // Unwanted POS baggage routes pruned for RestroDash lean integration:
+  // app.use('/api/cash-closures', cashClosureRoutes);
+  // app.use('/api/cash-sessions', cashSessionRoutes);
+  // app.use('/api/inventory', inventoryRoutes);
+  // app.use('/api/supplies', supplyRoutes);
+  // app.use('/api/recipes', recipeRoutes);
   app.use('/api/tables', tableRoutes);
-  app.use('/api/kitchen-stations', kitchenStationRoutes);
+  // app.use('/api/kitchen-stations', kitchenStationRoutes);
   app.use('/api/customers', customerRoutes);
   app.use('/api/staff', staffRoutes);   // users with POS roles
   app.use('/api/users', staffRoutes);   // same router, dual-mounted
   app.use('/api/settings', settingsRoutes);
   app.use('/api/payment-methods', paymentMethodRoutes);
   app.use('/api/reports', reportRoutes);
-  app.use('/api/kds', kdsRoutes);
-  app.use('/api/kds-info', kdsInfoRoutes);
-  app.use('/api/pos-info', posInfoRoutes);
+  // app.use('/api/kds', kdsRoutes);
+  // app.use('/api/kds-info', kdsInfoRoutes);
+  // app.use('/api/pos-info', posInfoRoutes);
   app.use('/api/server-app-info', serverAppInfoRoutes);
-  app.use('/api/more-apps', moreAppsRoutes);
+  app.use('/api/server-app', serverAppInfoRoutes);
+  // app.use('/api/more-apps', moreAppsRoutes);
   app.use('/api/printers', printerRoutes);
   app.use('/api/db', databaseRoutes);
   app.use('/api/db-tools', databaseToolsRoutes);
   app.use('/api/menu-csv', menuCsvRoutes);
   app.use('/api/tax-packs', taxPackRoutes);
-  app.use('/api/held-orders', heldOrderRoutes);
+  // app.use('/api/held-orders', heldOrderRoutes);
   app.use('/api/print-templates', printTemplateRoutes);
-  app.use('/api/whatsapp', whatsappRoutes);
+  // app.use('/api/whatsapp', whatsappRoutes);
   app.use('/api/support-ticket', supportTicketRoutes);
   app.use('/api/diagnostics', diagnosticsRoutes);
   app.use('/api/authorization', authorizationRoutes);
@@ -152,54 +154,6 @@ export function registerRoutes(app: Express): void {
     }
   }));
 
-  // Returns cached mobile pairing code or generates fresh code if missing or expired.
-  app.get('/api/mobile/pairing-code', requirePermission('mobile-access.manage'), asyncHandler(async (req, res) => {
-    try {
-      const cached = getCachedPairingCode();
-      if (cached) {
-        return res.json({
-          pairing_code: cached.code,
-          expires_at: cached.expiresAt,
-          qr_data_url: await QRCode.toDataURL(cached.code, { errorCorrectionLevel: 'M', width: 256 }),
-        });
-      }
-      const { code, expires_at } = await cloudSync.generatePairingCode(false);
-      setCachedPairingCode(code, expires_at);
-      res.json({
-        pairing_code: code,
-        expires_at,
-        qr_data_url: await QRCode.toDataURL(code, { errorCorrectionLevel: 'M', width: 256 }),
-      });
-    } catch (error: any) {
-      res.status(mobilePairingErrorStatus(error)).json({ error: mobilePairingErrorMessage(error) });
-    }
-  }));
-
-  // Explicit rotate — disconnects every currently-paired RevFlo device.
-  app.post('/api/mobile/rotate-code', requirePermission('mobile-access.manage'), asyncHandler(async (req, res) => {
-    try {
-      const { code, expires_at } = await cloudSync.generatePairingCode(true);
-      setCachedPairingCode(code, expires_at);
-      res.json({
-        pairing_code: code,
-        expires_at,
-        qr_data_url: await QRCode.toDataURL(code, { errorCorrectionLevel: 'M', width: 256 }),
-      });
-    } catch (error: any) {
-      res.status(mobilePairingErrorStatus(error)).json({ error: mobilePairingErrorMessage(error) });
-    }
-  }));
-
-  // Paired RevFlo devices for this store — Settings > Mobile App session list.
-  app.get('/api/mobile/devices', requirePermission('mobile-access.manage'), asyncHandler(async (req, res) => {
-    try {
-      const devices = await cloudSync.listPairedDevices();
-      res.json({ devices });
-    } catch (error: any) {
-      console.error('[API] FloAdmin request failed:', error);
-      res.status(502).json({ error: 'Could not reach FloAdmin' });
-    }
-  }));
 
   // Legacy/flat customer search endpoint (frontend uses this)
   app.get('/api/customers-search', inlineCustomerLookupRateLimit, requirePermission('customers.view'), (req, res) => {

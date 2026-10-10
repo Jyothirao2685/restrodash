@@ -5,12 +5,10 @@ import axios from 'axios';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
-import { Plus, X, Edit, RotateCcw, Eye, EyeOff } from 'lucide-react';
+import { Plus, X, Edit, RotateCcw, Eye, EyeOff, Smartphone, ExternalLink } from 'lucide-react';
 import type { Staff } from '@/lib/types';
 import { useTranslations, type AppConfig } from 'use-intl';
 import { useAuthStore } from '@/store/auth';
-import { PermissionMatrix } from '@/components/settings/PermissionMatrix';
-import { PermissionAuditLog } from '@/components/settings/PermissionAuditLog';
 import { ROLE_ACCESS, ROLE_KEYS, hasRole } from '@shared/role-permissions';
 import { ROLE_LABEL_KEYS } from '@/lib/i18n-enums';
 import { tenantCan } from '@/lib/permissions';
@@ -201,6 +199,36 @@ export default function StaffPage() {
         {canManageStaff && <Button onClick={openAdd}><Plus size={16} className="me-1" /> {t('addButton')}</Button>}
       </div>
 
+      <div className="mb-6 p-4 rounded-xl border border-border bg-card flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5 text-foreground">
+          <Smartphone size={16} className="text-muted-foreground shrink-0" />
+          <span>
+            <strong>Server App:</strong> Waiters can access tableside ordering on any phone or tablet via port 3003.
+          </span>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <a
+            href="/server-standalone"
+            target="_blank"
+            rel="noreferrer"
+            className="font-bold text-brand hover:underline inline-flex items-center gap-1"
+          >
+            <span>Open Server App</span>
+            <ExternalLink size={12} />
+          </a>
+          <span className="text-border">|</span>
+          <a
+            href="http://localhost:3002/kds"
+            target="_blank"
+            rel="noreferrer"
+            className="font-bold text-brand hover:underline inline-flex items-center gap-1"
+          >
+            <span>Open KDS</span>
+            <ExternalLink size={12} />
+          </a>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {staff.map((s) => (
           <div key={s.id} className={`bg-card rounded-xl p-5 border ${s.is_active ? 'border-border' : 'border-border opacity-60'}`}>
@@ -238,8 +266,6 @@ export default function StaffPage() {
 
       {staff.length === 0 && <p className="text-center text-muted-foreground py-12">{t('empty')}</p>}
 
-      {canManagePermissions && <PermissionMatrix staff={staff} />}
-      {canManagePermissions && <PermissionAuditLog staff={staff} />}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

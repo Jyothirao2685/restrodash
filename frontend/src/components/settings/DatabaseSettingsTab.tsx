@@ -101,7 +101,7 @@ export type PinGate =
   | { mode: 'backup' }
   | { mode: 'backup-custom' }
   | { mode: 'import'; payload: { data: ImportPayload; overwrite: boolean } }
-  | { mode: 'restore'; payload: { backupPath: string } }
+  | { mode: 'restore'; payload: { backupPath: string; fileName?: string } }
   | { mode: 'restore-google-drive'; payload: { fileId: string; sha256: string } }
   | { mode: 'delete-backup'; payload: { fileName: string } }
   | { mode: 'delete-cloud' }
@@ -259,7 +259,7 @@ export function DatabaseSettingsTab({
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `flo-export-${new Date().toISOString().split('T')[0]}.json`;
+                a.download = `restrodash-export-${new Date().toISOString().split('T')[0]}.json`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -748,7 +748,7 @@ export function DatabaseSettingsTab({
               reader.onload = async (event) => {
                 try {
                   const data = JSON.parse(event.target?.result as string) as ImportPayload;
-                  if (!data.app || data.app !== 'FloDesktop') {
+                  if (!data.app || (data.app !== 'FloDesktop' && data.app !== 'RestroDash')) {
                     toast.error(t('invalidExportFile'));
                     return;
                   }

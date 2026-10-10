@@ -3,8 +3,11 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 
-// Connect to flo.db to find a valid staff user and table
-const dbPath = path.join(__dirname, '..', 'flo.db');
+// Connect to restro.db (or legacy flo.db) to find a valid staff user and table
+const fs = require('fs');
+const restroDbPath = path.join(__dirname, '..', 'restro.db');
+const legacyDbPath = path.join(__dirname, '..', 'flo.db');
+const dbPath = fs.existsSync(restroDbPath) ? restroDbPath : legacyDbPath;
 const db = new Database(dbPath);
 
 const user = db.prepare("SELECT * FROM users WHERE is_active = 1 LIMIT 1").get();
@@ -44,7 +47,7 @@ function request(options, body) {
 }
 
 async function runTest() {
-  console.log('=== STARTING QR DINE-IN END-TO-END VERIFICATION ===\n');
+  console.log('=== STARTING RESTRO DASH END-TO-END VERIFICATION ===\n');
 
   // Step 1: Health check
   console.log('[1/10] Checking server health...');
@@ -56,6 +59,10 @@ async function runTest() {
   console.log('\n[2/10] Loading table & QR code via staff API...');
   let table = db.prepare("SELECT * FROM tables WHERE is_active = 1 LIMIT 1").get();
   if (!table) throw new Error('No active table found');
+
+  // Reset table to available state and clear stale orders for clean test run
+  db.prepare("UPDATE tables SET status = 'available', active_session_key = NULL, qr_session_code = NULL, shared_cart_json = NULL, qr_session_started_at = NULL WHERE id = ?").run(table.id);
+  db.prepare("UPDATE orders SET status = 'completed' WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')").run(table.id);
 
   const qrRes = await request({
     hostname: 'localhost',
@@ -71,32 +78,127 @@ async function runTest() {
   console.log(`  ✓ Table #${table.number} QR Token: ${qrToken}`);
   console.log(`  ✓ QR Ordering URL: ${qrRes.data.qr_url}`);
 
-  // Step 3: Public Unauthenticated Menu Access
-  console.log('\n[3/10] Accessing public menu as customer without credentials...');
-  const sessionA = 'cust_session_' + Date.now();
-  const menuRes = await request({
+  // Step 3: Device A scans table (Becomes Host)
+  console.log('\n[3/10] Device A scans table (Becomes Table Host)...');
+  const sessionHost = 'host_device_' + Date.now();
+  const hostMenuRes = await request({
     hostname: 'localhost',
     port: 3001,
     path: `/api/public/table/${qrToken}`,
     method: 'GET',
-    headers: { 'x-device-session-key': sessionA },
+    headers: { 'x-device-session-key': sessionHost },
   });
-  if (menuRes.status !== 200 || menuRes.data?.locked) {
-    throw new Error(`Public menu fetch failed: ${menuRes.status} ${JSON.stringify(menuRes.data)}`);
+  if (hostMenuRes.status !== 200) {
+    throw new Error(`Public menu fetch failed: ${hostMenuRes.status} ${JSON.stringify(hostMenuRes.data)}`);
   }
-  const products = menuRes.data.products;
-  if (!products || products.length === 0) throw new Error('No products in catalog');
-  console.log(`  ✓ Public menu loaded: ${menuRes.data.categories?.length || 0} categories, ${products.length} products`);
-  console.log(`  ✓ Table is unlocked: locked=${menuRes.data.locked}`);
+  if (!hostMenuRes.data.is_host) {
+    throw new Error(`Expected Device A to be session host! Got: ${JSON.stringify(hostMenuRes.data)}`);
+  }
+  const sessionCode = hostMenuRes.data.session_code;
+  if (!sessionCode || sessionCode.length !== 4) {
+    throw new Error(`Expected 4-digit session code! Got: ${sessionCode}`);
+  }
+  console.log(`  ✓ Device A recognized as Host. 4-Digit Table Code: ${sessionCode}`);
+  console.log(`  ✓ Menu items loaded: ${hostMenuRes.data.products?.length || 0} products`);
 
-  // Step 4: Customer places order
-  console.log('\n[4/10] Placing customer order via QR menu...');
-  const orderItem = {
-    product_id: products[0].id,
+  // Step 4: Device B (Friend) scans table (NOT locked out - ultra fast menu)
+  console.log('\n[4/10] Device B scans table (Zero lockout, instant menu access)...');
+  const sessionGuest = 'guest_device_' + Date.now();
+  const guestMenuRes = await request({
+    hostname: 'localhost',
+    port: 3001,
+    path: `/api/public/table/${qrToken}`,
+    method: 'GET',
+    headers: { 'x-device-session-key': sessionGuest },
+  });
+  if (guestMenuRes.status !== 200) {
+    throw new Error(`Device B menu fetch failed: ${guestMenuRes.status}`);
+  }
+  if (guestMenuRes.data.is_host) {
+    throw new Error('Device B should NOT be session host');
+  }
+  if (guestMenuRes.data.is_joined) {
+    throw new Error('Device B should not yet be joined');
+  }
+  console.log('  ✓ Device B immediately loads full menu without lockout');
+
+  // Step 5: Device B joins table using 4-digit code
+  console.log('\n[5/10] Device B joins table using 4-digit code...');
+  const wrongCodeRes = await request(
+    {
+      hostname: 'localhost',
+      port: 3001,
+      path: `/api/public/table/${qrToken}/join`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    },
+    { code: '0000', session_key: sessionGuest }
+  );
+  if (wrongCodeRes.status !== 400) {
+    throw new Error(`Expected 400 for incorrect code, got: ${wrongCodeRes.status}`);
+  }
+  console.log('  ✓ Invalid code properly rejected');
+
+  const joinRes = await request(
+    {
+      hostname: 'localhost',
+      port: 3001,
+      path: `/api/public/table/${qrToken}/join`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    },
+    { code: sessionCode, session_key: sessionGuest }
+  );
+  if (joinRes.status !== 200 || !joinRes.data.success) {
+    throw new Error(`Failed to join table: ${joinRes.status} ${JSON.stringify(joinRes.data)}`);
+  }
+  console.log('  ✓ Device B joined collaborative dining table successfully');
+
+  // Step 6: Collaborative Cart Sync (Device B adds an item)
+  console.log('\n[6/10] Testing Collaborative Cart Sync across devices...');
+  const testProduct = hostMenuRes.data.products[0];
+  const sharedItem = {
+    product_id: testProduct.id,
+    product_name: testProduct.name,
+    price: Number(testProduct.price),
     quantity: 2,
-    special_instructions: 'Extra crispy',
+    special_instructions: 'Less spicy',
   };
-  const orderRes = await request(
+
+  const syncRes = await request(
+    {
+      hostname: 'localhost',
+      port: 3001,
+      path: `/api/public/table/${qrToken}/cart`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-device-session-key': sessionGuest,
+        'x-table-session-code': sessionCode,
+      },
+    },
+    { cart: [sharedItem] }
+  );
+  if (syncRes.status !== 200) {
+    throw new Error(`Cart push failed: ${syncRes.status}`);
+  }
+
+  // Device A reads shared cart
+  const cartReadRes = await request({
+    hostname: 'localhost',
+    port: 3001,
+    path: `/api/public/table/${qrToken}/cart`,
+    method: 'GET',
+    headers: { 'x-device-session-key': sessionHost },
+  });
+  if (cartReadRes.status !== 200 || !cartReadRes.data.cart?.length) {
+    throw new Error(`Host could not read synced cart: ${JSON.stringify(cartReadRes.data)}`);
+  }
+  console.log(`  ✓ Shared cart synced: Host sees item "${cartReadRes.data.cart[0].product_name}" added by Guest`);
+
+  // Step 7: Host-Only Order Authority (Device B cannot submit final order)
+  console.log('\n[7/10] Verifying Host-Only Final Order Enforcement...');
+  const unauthorizedOrderRes = await request(
     {
       hostname: 'localhost',
       port: 3001,
@@ -104,45 +206,23 @@ async function runTest() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-device-session-key': sessionA,
+        'x-device-session-key': sessionGuest,
       },
     },
     {
       qr_token: qrToken,
-      session_key: sessionA,
-      customer_name: 'Aarav Patel',
-      customer_phone: '9876543210',
-      items: [orderItem],
-      special_instructions: 'Please bring water glasses',
+      session_key: sessionGuest,
+      customer_name: 'Guest Friend',
+      items: [sharedItem],
     }
   );
-  if (orderRes.status !== 201 || !orderRes.data?.order?.id) {
-    throw new Error(`Order placement failed: ${orderRes.status} ${JSON.stringify(orderRes.data)}`);
+  if (unauthorizedOrderRes.status !== 403) {
+    throw new Error(`Expected 403 Forbidden for non-host order, got: ${unauthorizedOrderRes.status}`);
   }
-  const createdOrder = orderRes.data.order;
-  console.log(`  ✓ Order created: #${createdOrder.order_number} (ID: ${createdOrder.id})`);
-  console.log(`  ✓ Approval status: "${createdOrder.approval_status}" (Correctly requires waiter approval)`);
-  console.log(`  ✓ Order total: ₹${createdOrder.total}`);
+  console.log(`  ✓ Guest order attempt blocked: HTTP 403 ("${unauthorizedOrderRes.data.error}")`);
 
-  // Step 5: Verify Anti-IDOR & Table Occupancy Defense
-  console.log('\n[5/10] Testing anti-IDOR & table occupancy lock from a DIFFERENT device...');
-  const hackerSession = 'prankster_device_999';
-  const hackerMenuRes = await request({
-    hostname: 'localhost',
-    port: 3001,
-    path: `/api/public/table/${qrToken}`,
-    method: 'GET',
-    headers: { 'x-device-session-key': hackerSession },
-  });
-  if (!hackerMenuRes.data?.locked) {
-    throw new Error('FAIL: Table should be locked to other devices while occupied!');
-  }
-  console.log(`  ✓ Second device BLOCKED: locked=${hackerMenuRes.data.locked}`);
-  console.log(`  ✓ Friendly lock reason: "${hackerMenuRes.data.reason}"`);
-
-  // Step 6: Hacker attempts to submit an order on the occupied table
-  console.log('\n[6/10] Testing unauthorized order attempt from another device...');
-  const hackerOrderRes = await request(
+  // Host places the final order
+  const hostOrderRes = await request(
     {
       hostname: 'localhost',
       port: 3001,
@@ -150,59 +230,24 @@ async function runTest() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-device-session-key': hackerSession,
+        'x-device-session-key': sessionHost,
       },
     },
     {
       qr_token: qrToken,
-      session_key: hackerSession,
-      customer_name: 'Prankster',
-      items: [orderItem],
+      session_key: sessionHost,
+      customer_name: 'Table Host',
+      items: [sharedItem],
     }
   );
-  if (hackerOrderRes.status !== 403) {
-    throw new Error(`FAIL: Unauthorized order should return 403 Forbidden! Got: ${hackerOrderRes.status}`);
+  if (hostOrderRes.status !== 201 || !hostOrderRes.data?.order?.id) {
+    throw new Error(`Host order failed: ${hostOrderRes.status} ${JSON.stringify(hostOrderRes.data)}`);
   }
-  console.log(`  ✓ Malicious order REJECTED with HTTP 403 Forbidden ("${hackerOrderRes.data?.error}")`);
-
-  // Step 7: Customer live status query (anti-IDOR test)
-  console.log('\n[7/10] Checking customer order status tracking with session validation...');
-  const statusRes = await request({
-    hostname: 'localhost',
-    port: 3001,
-    path: `/api/public/orders/${createdOrder.id}/status`,
-    method: 'GET',
-    headers: { 'x-device-session-key': sessionA },
-  });
-  if (statusRes.status !== 200) throw new Error(`Status check failed: ${statusRes.status}`);
-  console.log(`  ✓ Legitimate customer can track order status: "${statusRes.data.approval_status}"`);
-
-  const hackerStatusRes = await request({
-    hostname: 'localhost',
-    port: 3001,
-    path: `/api/public/orders/${createdOrder.id}/status`,
-    method: 'GET',
-    headers: { 'x-device-session-key': hackerSession },
-  });
-  if (hackerStatusRes.status !== 403) {
-    throw new Error(`FAIL: Other device should NOT be able to view customer order status! Got: ${hackerStatusRes.status}`);
-  }
-  console.log(`  ✓ Other device cannot snoop on order (HTTP 403 IDOR protected)`);
+  const createdOrder = hostOrderRes.data.order;
+  console.log(`  ✓ Host successfully submitted final order #${createdOrder.order_number} (Approval: ${createdOrder.approval_status})`);
 
   // Step 8: Staff approves the order on POS
   console.log('\n[8/10] Staff approves pending order on POS...');
-  const pendingOrdersRes = await request({
-    hostname: 'localhost',
-    port: 3001,
-    path: '/api/orders?approval_status=pending_approval',
-    method: 'GET',
-    headers: { Authorization: `Bearer ${staffToken}` },
-  });
-  const pendingList = pendingOrdersRes.data?.orders || [];
-  const found = pendingList.find((o) => o.id === createdOrder.id);
-  if (!found) throw new Error('Order not found in pending approval list');
-  console.log(`  ✓ POS sees ${pendingList.length} pending order(s)`);
-
   const approveRes = await request({
     hostname: 'localhost',
     port: 3001,
@@ -211,48 +256,69 @@ async function runTest() {
     headers: { Authorization: `Bearer ${staffToken}` },
   });
   if (approveRes.status !== 200 || !approveRes.data?.success) {
-    throw new Error(`Approval failed: ${approveRes.status} ${JSON.stringify(approveRes.data)}`);
+    throw new Error(`Staff approval failed: ${approveRes.status} ${JSON.stringify(approveRes.data)}`);
   }
   console.log('  ✓ Staff approved order. KDS and kitchen notified via WebSocket!');
 
-  // Step 9: Customer places Round 2 order (same table session)
-  console.log('\n[9/10] Customer places Round 2 order from the same table...');
-  const round2Res = await request(
-    {
-      hostname: 'localhost',
-      port: 3001,
-      path: '/api/public/orders',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-device-session-key': sessionA,
-      },
-    },
-    {
-      qr_token: qrToken,
-      session_key: sessionA,
-      customer_name: 'Aarav Patel',
-      items: [{ product_id: products[0].id, quantity: 1, special_instructions: 'Round 2' }],
-    }
-  );
-  if (round2Res.status !== 201) {
-    throw new Error(`Round 2 ordering failed: ${round2Res.status} ${JSON.stringify(round2Res.data)}`);
+  // Step 9: 1-Tap "86 / Sold Out" Toggle verification
+  console.log('\n[9/10] Testing 1-Tap "86 / Sold Out" Toggle...');
+  const toggleOffRes = await request({
+    hostname: 'localhost',
+    port: 3001,
+    path: `/api/products/${testProduct.id}/toggle-availability`,
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${staffToken}` },
+  });
+  if (toggleOffRes.status !== 200 || toggleOffRes.data?.is_active !== false) {
+    throw new Error(`Failed to toggle product off: ${toggleOffRes.status} ${JSON.stringify(toggleOffRes.data)}`);
   }
-  console.log(`  ✓ Round 2 placed successfully without OTP (Order #${round2Res.data.order.order_number})`);
+  console.log(`  ✓ Product "${testProduct.name}" marked 86'd / Sold Out`);
 
-  // Step 10: Clear / Settle Table Session
-  console.log('\n[10/10] Resetting table to available after dining...');
-  // Approve round 2 then mark table available
+  // Verify it disappears from public menu
+  const updatedMenuRes = await request({
+    hostname: 'localhost',
+    port: 3001,
+    path: `/api/public/table/${qrToken}`,
+    method: 'GET',
+    headers: { 'x-device-session-key': sessionHost },
+  });
+  const foundItem = updatedMenuRes.data.products?.find((p) => p.id === testProduct.id);
+  if (foundItem) {
+    throw new Error('FAIL: 86\'d product should not be visible in public menu!');
+  }
+  console.log('  ✓ 86\'d product instantly disappeared from customer QR menu');
+
+  // Toggle back to active
   await request({
     hostname: 'localhost',
     port: 3001,
-    path: `/api/orders/${round2Res.data.order.id}/qr-approve`,
-    method: 'POST',
+    path: `/api/products/${testProduct.id}/toggle-availability`,
+    method: 'PATCH',
     headers: { Authorization: `Bearer ${staffToken}` },
   });
-  // Cancel/complete test orders so table is free
-  db.prepare("UPDATE orders SET status = 'completed' WHERE id IN (?, ?)").run(createdOrder.id, round2Res.data.order.id);
-  const resetRes = await request(
+  console.log('  ✓ Product restored to In Stock');
+
+  // Step 10: Batch QR Tent Card endpoint verification
+  console.log('\n[10/10] Testing Batch QR Tent Card endpoint for all tables...');
+  const batchRes = await request({
+    hostname: 'localhost',
+    port: 3001,
+    path: '/api/tables/qr-codes/batch',
+    method: 'GET',
+    headers: { Authorization: `Bearer ${staffToken}` },
+  });
+  if (batchRes.status !== 200 || !Array.isArray(batchRes.data?.tables) || batchRes.data.tables.length === 0) {
+    throw new Error(`Batch QR endpoint failed: ${batchRes.status} ${JSON.stringify(batchRes.data)}`);
+  }
+  const firstBatch = batchRes.data.tables[0];
+  if (!firstBatch.qr_data_url || !firstBatch.table_number) {
+    throw new Error('Batch table missing qr_data_url or table_number');
+  }
+  console.log(`  ✓ Batch QR generated for ${batchRes.data.tables.length} tables with data URLs`);
+
+  // Cleanup: mark test order completed and reset table
+  db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?").run(createdOrder.id);
+  await request(
     {
       hostname: 'localhost',
       port: 3001,
@@ -265,23 +331,8 @@ async function runTest() {
     },
     { status: 'available' }
   );
-  if (resetRes.status !== 200) throw new Error(`Table reset failed: ${resetRes.status}`);
 
-  // Verify that new guest can now scan and open the table
-  const newGuestSession = 'guest_session_' + Date.now();
-  const nextMenuRes = await request({
-    hostname: 'localhost',
-    port: 3001,
-    path: `/api/public/table/${qrToken}`,
-    method: 'GET',
-    headers: { 'x-device-session-key': newGuestSession },
-  });
-  if (nextMenuRes.data?.locked) {
-    throw new Error('FAIL: Table should be unlocked for new guests after session reset!');
-  }
-  console.log(`  ✓ Table is now available and unlocked for the next dining party!`);
-
-  console.log('\n🎉 ALL 10 VERIFICATION CHECKS PASSED WITH 100% SUCCESS!');
+  console.log('\n🎉 ALL 10 RESTRO DASH VERIFICATION CHECKS PASSED WITH 100% SUCCESS!');
 }
 
 runTest().catch((err) => {

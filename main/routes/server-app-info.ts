@@ -3,12 +3,46 @@ import { Router, Request, Response } from 'express';
 import QRCode from 'qrcode';
 import { getLocalIP, getAllLocalIPs } from '../server-state';
 import { getServerAppPort } from '../server-app-state';
-import { isServerAppEnabled } from '../db';
+import { isServerAppEnabled, getDatabase } from '../db';
 import { asyncHandler } from '../middleware/async-handler';
+import { RegionalNotConfiguredError, resolveRegionalSnapshot } from '../countries';
 
 const router = Router();
 
-router.get('/', asyncHandler(async (_req: Request, res: Response) => {
+function handleServerAppInfo(_req: Request, res: Response) {
+  if (!isServerAppEnabled()) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  const rows = getDatabase().prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[];
+  const settings: Record<string, string> = {};
+  for (const row of rows) settings[row.key] = row.value;
+  let snapshot;
+  try {
+    snapshot = resolveRegionalSnapshot(settings);
+  } catch (error) {
+    if (error instanceof RegionalNotConfiguredError) return res.status(409).json({ error: 'regional_not_configured' });
+    throw error;
+  }
+  res.json({
+    language: settings.language || null,
+    country: snapshot.country,
+    currency: snapshot.currency,
+    currency_symbol: snapshot.currencySymbol,
+    currency_position: snapshot.currencyPosition,
+    currency_fraction_digits: snapshot.currencyFractionDigits,
+    kds_enabled: settings.kds_enabled !== 'false',
+  });
+}
+
+router.get('/info', asyncHandler(async (req: Request, res: Response) => {
+  handleServerAppInfo(req, res);
+}));
+
+router.get('/', asyncHandler(async (req: Request, res: Response) => {
+  // If requested with Accept application/json and /info shape or standalone
+  if (req.query.format === 'regional') {
+    return handleServerAppInfo(req, res);
+  }
   if (!isServerAppEnabled()) {
     return res.status(404).json({ error: 'Not found' });
   }

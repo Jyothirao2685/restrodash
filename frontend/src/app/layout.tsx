@@ -24,13 +24,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Flo",
-  description: "Smart Point of Sale for restaurants",
+  title: "Restro Dash",
+  description: "Restro Dash - Modern POS & Collaborative QR Ordering",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Flo",
+    title: "Restro Dash",
   },
   icons: {
     icon: [

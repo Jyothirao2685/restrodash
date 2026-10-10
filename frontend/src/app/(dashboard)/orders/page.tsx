@@ -447,8 +447,11 @@ export default function OrdersPage() {
   };
 
   // Completed prepaid orders remain active while unserved kitchen items exist (when KDS enabled).
+  // Unpaid orders ALWAYS remain active regardless of order status so staff can collect payment.
   const isOrderActive = (order: Order) => {
     if (order.status === 'cancelled') return false;
+    const isPaid = paymentStatusOf(order) === 'paid';
+    if (!isPaid) return true;
     if (order.status === 'completed') {
       return kdsEnabled && (order.items || []).some((item) => !['served', 'cancelled'].includes(item.status));
     }
@@ -498,12 +501,12 @@ export default function OrdersPage() {
     }
   };
 
-  const handlePaymentComplete = async () => {
+  const handlePaymentComplete = async (opts?: { printReceipt?: boolean }) => {
     const bill = paymentBill; // capture before clearing state
     setPaymentBill(null);
     fetchOrders();
 
-    if (bill && autoPrintBill) {
+    if (bill && (opts?.printReceipt || autoPrintBill)) {
       try {
         const fallbackOrder = orders.find((o) => o.bill?.id === bill.id);
         const { data } = await api.get(`/bills/${bill.id}`);
@@ -619,6 +622,16 @@ export default function OrdersPage() {
       toast.error(formatReceiptErrorToast(detail, tOrders('printReceiptFailed')));
     } finally {
       setPrintingSlipOrderId(null);
+    }
+  };
+
+  const handleUpdateStatus = async (orderId: number, newStatus: string) => {
+    try {
+      await api.patch(`/orders/${orderId}/status`, { status: newStatus });
+      toast.success(`Order marked as ${newStatus}`);
+      fetchOrders();
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to update order status');
     }
   };
 
@@ -1087,6 +1100,7 @@ export default function OrdersPage() {
               linkCustomerResults={linkCustomerResults}
               linkingCustomer={linkingCustomer}
               onCheckout={handleCheckout}
+              onUpdateStatus={handleUpdateStatus}
               onAddItems={openAddItemsModal}
               onRefund={(ord, bills) => setRefundModal({ order: ord, bills })}
               onConvertToTakeaway={handleConvertToTakeaway}

@@ -22,6 +22,7 @@ import { hasPermission, requirePermission } from '../services/authorization';
 import { ROLE_ACCESS, hasRole } from '../../shared/role-permissions';
 import { getCurrencyFractionDigits, getCurrencyMinorUnitFactor } from '../countries';
 import { getTenantCurrency, syncUnpaidBillsForOrder } from './bills';
+import { printOrderKOT } from './printers';
 import expressRateLimit from 'express-rate-limit';
 import { randomUUID } from 'crypto';
 
@@ -1199,7 +1200,7 @@ router.patch('/:id/status', orderWriteRateLimit, requirePermission('orders.statu
   }
 });
 
-router.post('/:id/qr-approve', orderWriteRateLimit, requirePermission('orders.status.update'), (req: Request, res: Response) => {
+router.post('/:id/qr-approve', orderWriteRateLimit, requirePermission('orders.status.update'), async (req: Request, res: Response) => {
   try {
     const db = getDatabase();
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id) as any;
@@ -1236,7 +1237,16 @@ router.post('/:id/qr-approve', orderWriteRateLimit, requirePermission('orders.st
     broadcastQrOrderApproved(order.id);
     cloudSync.recordOrderChanged(order.id, 'order.approved');
 
-    res.json({ success: true, order: result.order });
+    // Trigger physical KOT print for the accepted order
+    let kotPrinted = false;
+    try {
+      const kotResult = await printOrderKOT(order.id, {}, db);
+      kotPrinted = !!kotResult.success;
+    } catch (kotErr) {
+      console.warn('[Orders] KOT auto-print on QR approval warning:', kotErr);
+    }
+
+    res.json({ success: true, order: result.order, kot_printed: kotPrinted });
   } catch (error: any) {
     console.error('[Orders] QR Approve error:', error);
     res.status(error.statusCode || 500).json({ error: error.message || 'Failed to approve order' });

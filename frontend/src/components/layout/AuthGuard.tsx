@@ -10,17 +10,14 @@ import { tenantCan } from '@/lib/permissions';
 import type { Tenant } from '@/lib/types';
 
 export const LANDING_PAGE_CANDIDATES = [
-  ['pos.use', '/pos'],
   ['dashboard.view', '/dashboard'],
   ['orders.read', '/orders'],
-  ['kitchen.use', '/kds'],
   ['tables.view', '/tables'],
-  ['whatsapp.use', '/whatsapp'],
   ['catalog.manage', '/products'],
-  ['inventory.view', '/inventory'],
-  ['customers.view', '/customers'],
+  ['kitchen.use', '/kds'],
   ['staff.view', '/staff'],
   ['settings.view', '/settings'],
+  ['pos.use', '/dashboard'],
   ['support.use', '/support'],
 ] as const;
 
@@ -28,7 +25,7 @@ export function getLandingPage(tenant?: Tenant | null): string {
   return LANDING_PAGE_CANDIDATES.find(([permission]) => tenantCan(tenant, permission))?.[1] ?? '/auth/login';
 }
 
-const PUBLIC_PATHS = ['/kds', '/kds-standalone', '/server-standalone', '/auth/login', '/auth/register', '/auth/recover', '/setup'];
+const PUBLIC_PATHS = ['/kds', '/kds-standalone', '/server-standalone', '/auth/login', '/auth/register', '/auth/recover', '/setup', '/m'];
 
 export const PAGE_PERMISSIONS = [
   ['/pos', 'pos.use'],
@@ -50,16 +47,17 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null); // null = still checking
 
-  const isPublicPath = PUBLIC_PATHS.some(p => pathname === p || pathname?.startsWith(p + '/'));
+  const isCustomerMenuPath = pathname === '/m' || pathname?.startsWith('/m/');
+  const isPublicPath = isCustomerMenuPath || PUBLIC_PATHS.some(p => pathname === p || pathname?.startsWith(p + '/'));
   const isSetupPath = pathname === '/setup' || pathname?.startsWith('/setup/');
-  const isStandalonePath = pathname?.startsWith('/kds') || pathname?.startsWith('/server-standalone');
+  const isStandalonePath = pathname?.startsWith('/kds') || pathname?.startsWith('/server-standalone') || isCustomerMenuPath;
 
   useEffect(() => {
-    // Standalone KDS and Server App pages manage their own auth sessions;
-    // skip loading shared POS auth store to avoid clearing their tokens.
-    if (isStandalonePath) return;
+    // Customer mobile menu and standalone KDS/Server App manage their own sessions;
+    // skip loading shared POS auth store to avoid clearing tokens or triggering redirects.
+    if (isStandalonePath || isCustomerMenuPath) return;
     loadFromStorage();
-  }, [isStandalonePath, loadFromStorage]);
+  }, [isCustomerMenuPath, isStandalonePath, loadFromStorage]);
 
   useEffect(() => {
     if (isStandalonePath || !user || !currentTenant) return;
@@ -80,6 +78,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   // Single effect: determine where to redirect after auth state + setup status are known
   useEffect(() => {
+    if (isCustomerMenuPath) return;
     if (loading) return; // wait for auth state to load
 
     // If we don't know setup status yet, fetch it
@@ -131,7 +130,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         router.replace(getLandingPage(currentTenant));
       }
     }
-  }, [loading, user, currentTenant, isPublicPath, isSetupPath, isStandalonePath, needsSetup, pathname, router]);
+  }, [loading, user, currentTenant, isPublicPath, isSetupPath, isStandalonePath, isCustomerMenuPath, needsSetup, pathname, router]);
 
   if (isStandalonePath || isSetupPath) {
     return <>{children}</>;

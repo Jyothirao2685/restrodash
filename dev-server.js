@@ -64,6 +64,11 @@ Module._load = function (request, parent, isMain) {
       Menu: { buildFromTemplate: () => ({}), setApplicationMenu: () => {} },
       Tray: class {},
       nativeImage: { createFromPath: () => ({ resize: () => ({}) }) },
+      safeStorage: {
+        isEncryptionAvailable: () => true,
+        encryptString: (str) => Buffer.from(str, 'utf8'),
+        decryptString: (buf) => buf.toString('utf8'),
+      },
     };
   }
   return originalLoad.call(this, request, parent, isMain);
@@ -75,7 +80,6 @@ const { createExitCodeAwareShutdown, waitForHttpShutdownWork, isShutdownTimeout 
 const { startServer, stopServer, getServerPort } = require('./dist/main/server');
 const { startKdsServer, stopKdsServer, getKdsPort } = require('./dist/main/kds-server');
 const { startServerApp, stopServerApp, getServerAppPort } = require('./dist/main/server-app');
-const { shutdown: shutdownWhatsApp, requestShutdown: requestWhatsAppShutdown } = require('./dist/main/services/whatsapp');
 const { startStandaloneServers } = require('./dist/main/standalone-startup');
 
 let exitRequested = false;
@@ -83,10 +87,9 @@ let shutdownRequested = false;
 const requestShutdown = createExitCodeAwareShutdown(async () => {
   let cleanupFailed = false;
   let databaseBlocked = false;
-  try { await stopServerApp(); } catch (err) { console.error('[DevServer] Server App shutdown failed:', err); cleanupFailed = true; databaseBlocked = true; if (isShutdownTimeout(err)) throw err; }
   try { await stopServer(); } catch (err) { console.error('[DevServer] Main server shutdown failed:', err); cleanupFailed = true; databaseBlocked = true; if (isShutdownTimeout(err)) throw err; }
-  try { await stopKdsServer(); } catch (err) { console.error('[DevServer] KDS server shutdown failed:', err); cleanupFailed = true; databaseBlocked = true; if (isShutdownTimeout(err)) throw err; }
-  try { await shutdownWhatsApp(); } catch (err) { console.error('[DevServer] WhatsApp shutdown failed:', err); cleanupFailed = true; databaseBlocked = true; if (isShutdownTimeout(err)) throw err; }
+  try { await stopKdsServer(); } catch (err) { console.error('[DevServer] KDS server shutdown failed:', err); cleanupFailed = true; }
+  try { await stopServerApp(); } catch (err) { console.error('[DevServer] Server App shutdown failed:', err); cleanupFailed = true; }
   try { await waitForHttpShutdownWork(); } catch (err) { console.error('[DevServer] HTTP handler cleanup failed:', err); cleanupFailed = true; databaseBlocked = true; if (isShutdownTimeout(err)) throw err; }
   try { beginDatabaseShutdown(); await waitForDatabaseRequests(); } catch (err) { console.error('[DevServer] Database request drain failed:', err); cleanupFailed = true; databaseBlocked = true; if (isShutdownTimeout(err)) throw err; }
   if (!databaseBlocked) {
@@ -95,7 +98,6 @@ const requestShutdown = createExitCodeAwareShutdown(async () => {
   Module._load = originalLoad;
   return cleanupFailed ? 1 : 0;
 }, {
-  onShutdownRequested: requestWhatsAppShutdown,
   onFatalTimeout: () => process.exit(1),
 });
 
@@ -130,7 +132,7 @@ process.on('unhandledRejection', (err) => {
 (async () => {
   try {
     console.log('[DevServer] Initializing database...');
-    console.log('[DevServer] Starting Express, KDS, and Server App servers...');
+    console.log('[DevServer] Starting RestroDash API server, KDS, and Server App...');
     await startStandaloneServers({
       initializeDatabase: initDatabase,
       startServer,
@@ -139,11 +141,12 @@ process.on('unhandledRejection', (err) => {
       isShutdownRequested: () => shutdownRequested,
     });
 
-    console.log(`[DevServer] ✅ Main API running on http://localhost:${getServerPort()}`);
-    console.log(`[DevServer] ✅ KDS Server running on http://localhost:${getKdsPort()}`);
-    console.log(`[DevServer] ✅ Server App running on http://localhost:${getServerAppPort()}`);
-    console.log('[DevServer]    Frontend dev server: http://localhost:3000');
+    console.log(`[DevServer] ✅ RestroDash POS running on http://localhost:${getServerPort()}`);
+    console.log(`[DevServer] 🍳 Kitchen Display (KDS): http://localhost:${getKdsPort()}`);
+    console.log(`[DevServer] 📱 Server App (Tableside): http://localhost:${getServerAppPort()}`);
+    console.log(`[DevServer]    Customer QR Menu: http://localhost:${getServerPort()}/m?t=qr-tbl-01`);
     console.log(`[DevServer]    API health: http://localhost:${getServerPort()}/api/health`);
+    console.log(`[DevServer]    Public QR Menu API: http://localhost:${getServerPort()}/api/public/table/qr-tbl-01`);
   } catch (err) {
     console.error('[DevServer] Failed to start:', err);
     const code = err && (err.code === 'ERR_SHUTDOWN_ABORTED' || err.code === 'ABORT_ERR' || err.name === 'AbortError') ? 0 : 1;

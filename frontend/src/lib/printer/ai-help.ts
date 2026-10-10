@@ -12,16 +12,16 @@ export const AI_HELP_PROVIDERS: readonly AiProvider[] = [
   { id: 'claude', label: 'Claude', url: 'https://claude.ai/new' },
 ];
 
-const TROUBLESHOOTING_URL = 'https://flopos.com/documentation/troubleshooting';
-const SUPPORT_EMAIL = 'support@flopos.com';
+const TROUBLESHOOTING_URL = 'https://restrodash.com/documentation/troubleshooting';
+const SUPPORT_EMAIL = 'support@restrodash.com';
 const SUPPORT_WHATSAPP_URL = 'https://chat.whatsapp.com/LxHobzv6d2X81NzrVfMjzo?mode=gi_t';
 
 async function resolveAppContext(): Promise<string> {
   try {
     const info = await window.electronAPI?.getAppInfo?.();
-    if (info && 'version' in info) return `FloCafe ${info.version} on ${info.platform}`;
+    if (info && 'version' in info) return `Restro Dash ${info.version} on ${info.platform}`;
   } catch { /* best-effort only */ }
-  return 'FloCafe (desktop app)';
+  return 'Restro Dash (desktop app)';
 }
 
 /** Builds the prompt copied to the clipboard for AI hand-off on a printer failure. */
@@ -37,9 +37,9 @@ export async function buildPrinterDiagnosticPrompt(message: string, technicalDet
   }
   lines.push(
     '',
-    `FloCafe's printer troubleshooting guide: ${TROUBLESHOOTING_URL}`,
+    `Restro Dash's printer troubleshooting guide: ${TROUBLESHOOTING_URL}`,
     '',
-    `Please help me diagnose and fix it. If it turns out to need FloCafe support directly, tell me to email ${SUPPORT_EMAIL} or ask in the FloCafe WhatsApp community: ${SUPPORT_WHATSAPP_URL}.`,
+    `Please help me diagnose and fix it. If it turns out to need Restro Dash support directly, tell me to email ${SUPPORT_EMAIL} or ask in the Restro Dash WhatsApp community: ${SUPPORT_WHATSAPP_URL}.`,
   );
   return lines.join('\n');
 }

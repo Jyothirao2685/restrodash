@@ -5,6 +5,7 @@ import { hasPermission, requirePermission } from '../services/authorization';
 import { notifyKdsUpdate } from '../services/kds';
 import { cloudSync } from '../services/cloud-sync';
 import QRCode from 'qrcode';
+import os from 'os';
 
 const router = Router();
 
@@ -265,7 +266,7 @@ router.post('/', requirePermission('tables.manage'), (req: Request, res: Respons
     }
 
     const tableId = `tbl-${randomUUID().slice(0, 8)}`;
-    const qrToken = `tbl_tok_${randomBytes(8).toString('hex')}`;
+    const qrToken = `tbl_tok_${randomBytes(16).toString('hex')}`;
     const result = db.prepare(`
       INSERT INTO tables (id, number, capacity, floor, section, position_x, position_y, kitchen_station_id, qr_token, qr_enabled, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
@@ -289,7 +290,7 @@ router.post('/:id/regenerate-qr', requirePermission('tables.manage'), (req: Requ
     if (!existing) {
       return res.status(404).json({ error: 'Table not found' });
     }
-    const newQrToken = `tbl_tok_${randomBytes(8).toString('hex')}`;
+    const newQrToken = `tbl_tok_${randomBytes(16).toString('hex')}`;
     db.prepare('UPDATE tables SET qr_token = ?, active_session_key = NULL, updated_at = ? WHERE id = ?')
       .run(newQrToken, now(), req.params.id);
     const table = db.prepare('SELECT * FROM tables WHERE id = ?').get(req.params.id);
@@ -297,6 +298,67 @@ router.post('/:id/regenerate-qr', requirePermission('tables.manage'), (req: Requ
   } catch (error: any) {
     console.error("[API] Internal error:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+function resolveQrHost(req: Request): string {
+  const reqHost = req.get('host') || 'localhost:3001';
+  const isLoopback = reqHost.startsWith('localhost') || reqHost.startsWith('127.0.0.1');
+  if (isLoopback) {
+    const ifaces = os.networkInterfaces();
+    const candidates: { name: string; ip: string }[] = [];
+    for (const dev in ifaces) {
+      const devLower = dev.toLowerCase();
+      if (devLower.includes('virtual') || devLower.includes('vbox') || devLower.includes('vmware')) continue;
+      for (const details of ifaces[dev] || []) {
+        if (details.family === 'IPv4' && !details.internal && details.address !== '127.0.0.1') {
+          if (details.address.startsWith('192.168.56.') || details.mac?.startsWith('0a:00:27')) continue;
+          candidates.push({ name: devLower, ip: details.address });
+        }
+      }
+    }
+    const wifi = candidates.find((c) => c.name.includes('wi-fi') || c.name.includes('wlan') || c.name.includes('wireless'));
+    const chosenIp = wifi ? wifi.ip : candidates[0]?.ip;
+    if (chosenIp) {
+      const port = reqHost.split(':')[1] || '3001';
+      return `${chosenIp}:${port}`;
+    }
+  }
+  return reqHost;
+}
+
+router.get('/qr-codes/batch', requirePermission('tables.manage'), async (req: Request, res: Response) => {
+  try {
+    const db = getDatabase();
+    const tables = db.prepare('SELECT id, number, capacity, floor, qr_token, qr_enabled FROM tables WHERE is_active = 1 ORDER BY CAST(number AS INTEGER) ASC, number ASC').all() as any[];
+
+    const host = resolveQrHost(req);
+    const protocol = req.protocol || 'http';
+
+    const results = await Promise.all(tables.map(async (table) => {
+      let qrToken = table.qr_token;
+      // Auto-upgrade legacy predictable tokens (or missing tokens) to 128-bit unguessable tokens
+      if (!qrToken || qrToken.startsWith('qr-tbl-') || qrToken.length < 24) {
+        qrToken = `tbl_tok_${randomBytes(16).toString('hex')}`;
+        db.prepare('UPDATE tables SET qr_token = ?, updated_at = ? WHERE id = ?').run(qrToken, now(), table.id);
+      }
+      const qrUrl = `${protocol}://${host}/m?t=${qrToken}`;
+      const qrDataUrl = await QRCode.toDataURL(qrUrl, { errorCorrectionLevel: 'M', width: 260, margin: 1 });
+      return {
+        table_id: table.id,
+        table_number: table.number,
+        capacity: table.capacity,
+        floor: table.floor,
+        qr_token: qrToken,
+        qr_url: qrUrl,
+        qr_data_url: qrDataUrl,
+      };
+    }));
+
+    res.json({ tables: results });
+  } catch (error: any) {
+    console.error('[API] Batch QR codes error:', error);
+    res.status(500).json({ error: 'Failed to generate batch QR codes' });
   }
 });
 
@@ -309,12 +371,13 @@ router.get('/:id/qr-code', requirePermission('tables.manage'), async (req: Reque
     }
 
     let qrToken = table.qr_token;
-    if (!qrToken) {
-      qrToken = `tbl_tok_${randomBytes(8).toString('hex')}`;
+    // Auto-upgrade legacy predictable tokens (or missing tokens) to 128-bit unguessable tokens
+    if (!qrToken || qrToken.startsWith('qr-tbl-') || qrToken.length < 24) {
+      qrToken = `tbl_tok_${randomBytes(16).toString('hex')}`;
       db.prepare('UPDATE tables SET qr_token = ?, updated_at = ? WHERE id = ?').run(qrToken, now(), table.id);
     }
 
-    const host = req.get('host') || 'localhost:3001';
+    const host = resolveQrHost(req);
     const protocol = req.protocol || 'http';
     const qrUrl = `${protocol}://${host}/m?t=${qrToken}`;
     const qrDataUrl = await QRCode.toDataURL(qrUrl, { errorCorrectionLevel: 'M', width: 300, margin: 2 });

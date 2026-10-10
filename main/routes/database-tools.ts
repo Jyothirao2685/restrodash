@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { resetDatabaseWithBackup, resetDatabaseForCurrencyChange, getCurrencyResetImpact, listBackups, deleteBackup, getCurrentSchemaVersion } from '../db';
+import { resetDatabaseWithBackup, resetDatabaseForCurrencyChange, getCurrencyResetImpact, listBackups, deleteBackup, getCurrentSchemaVersion, getSchemaVersionFromBackup, restoreBackup, withDatabaseMaintenanceLock } from '../db';
 import { clearInMemoryRevokedTokens, clearUserAuthCache } from '../middleware/security';
 import { requirePermission } from '../services/authorization';
 import { requireMasterPin } from '../middleware/master-pin';
@@ -64,6 +64,48 @@ router.post('/backups/:fileName/delete', requirePermission('database.manage'), r
     res.status(500).json({ error: 'Deleting backup failed' });
   }
 });
+
+// Restores one backup from the managed backups directory, protected by Master PIN.
+router.post('/backups/:fileName/restore', requirePermission('database.manage'), requireMasterPin, asyncHandler(async (req: Request, res: Response) => {
+  const fileName = req.params.fileName as string;
+  const backups = listBackups();
+  const backup = backups.find((b) => b.fileName === fileName);
+  if (!backup) {
+    return res.status(404).json({ error: 'Backup not found' });
+  }
+
+  const backupVersion = getSchemaVersionFromBackup(backup.path);
+  const currentVersion = getCurrentSchemaVersion();
+  const versionMismatch = backupVersion !== null && backupVersion !== currentVersion;
+
+  await googleDrive.prepareForDatabaseRestore();
+  try {
+    const restoreResult = await withDatabaseMaintenanceLock(
+      (signal) => restoreBackup(backup.path, !versionMismatch, signal),
+      getHttpRequestSignal(req),
+    );
+    if (!restoreResult.success) {
+      return res.status(422).json({ error: restoreResult.error || 'Restore failed' });
+    }
+    const cleanup = googleDrive.completeDatabaseRestore();
+    clearUserAuthCache();
+    clearInMemoryRevokedTokens();
+    clearJWTSecretCache();
+    res.json({
+      success: true,
+      mode: restoreResult.mode,
+      backupVersion,
+      currentVersion,
+      tablesRestored: restoreResult.tablesRestored,
+      cleanupPending: restoreResult.cleanupPending === true || cleanup?.cleanupPending === true,
+    });
+  } catch (error: any) {
+    console.error('[DB Tools] restore backup error:', error);
+    res.status(500).json({ error: 'Restore failed' });
+  } finally {
+    googleDrive.releaseDatabaseRestore();
+  }
+}));
 
 router.get('/master-pin/status', requirePermission('database.manage'), (_req: Request, res: Response) => {
   res.json({ available: isMasterPinAvailable(), isSet: isMasterPinSet(), schemaVersion: getCurrentSchemaVersion() });

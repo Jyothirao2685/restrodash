@@ -632,70 +632,21 @@ router.post('/print-kot', requirePermission('printing.execute'), asyncHandler(as
       return res.status(400).json({ error: 'orderId is required' });
     }
 
-    const db = getDatabase();
-    const printer = db.prepare(
-      `SELECT * FROM printers
-       WHERE connection_type != 'webusb'
-       ORDER BY is_default DESC, name
-       LIMIT 1`,
-    ).get();
+    const printResult = await printOrderKOT(orderId, {
+      items,
+      stationName,
+      useUnicode,
+      arabicShapingOverride,
+      signal: getHttpRequestSignal(req),
+    });
 
-    if (!printer) {
-      return res.status(400).json({ error: 'No default printer configured. Add a printer in Settings.' });
-    }
-
-    const order: any = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    const kotLanguage = resolveTenantKotLanguage(db);
-
-    // Fetch order items from database
-    const orderItems: any[] = getEffectiveOrderItems(db, orderId);
-
-    // Fetch table/customer info if available so backend KOT metadata matches
-    // the browser and WebUSB paths.
-    if (order.table_id) {
-      const table: any = db.prepare('SELECT * FROM tables WHERE id = ?').get(order.table_id);
-      if (table) {
-        order.table = { name: table.number };
-      }
-    }
-    if (order.customer_id) {
-      const customer = db.prepare('SELECT name FROM customers WHERE id = ?').get(order.customer_id) as { name: string } | null;
-      if (customer) order.customer = { name: customer.name };
-    }
-
-    // Specific station prints one ticket; unassigned item overrides route by station.
-    let success = true;
-    const warnings: NonNullable<Awaited<ReturnType<typeof printKOTDetailed>>['warnings']> = [];
-    let failure: Awaited<ReturnType<typeof printKOTDetailed>> | null = null;
-    const kotSourceItems = (Array.isArray(items) ? items : orderItems)
-      .filter((item: any) => isKotItemPending(item?.status));
-
-    if (stationName) {
-      const station = stationName || 'Kitchen';
-      if (kotSourceItems.length > 0) {
-        const result = await printKOTDetailed(order, kotSourceItems, station, useUnicode, undefined, getHttpRequestSignal(req), arabicShapingOverride, kotLanguage);
-        success = result.ok;
-        failure = result.ok ? null : result;
-        warnings.push(...(result.warnings || []));
-      }
+    if (printResult.success) {
+      res.json({ success: true, warnings: printResult.warnings });
     } else {
-      const groups = routeItemsToStations(db, kotSourceItems).filter((g) => g.items.length > 0);
-      for (const group of groups) {
-        const result = await printKOTDetailed(order, group.items, group.stationName, useUnicode, group.printer || undefined, getHttpRequestSignal(req), arabicShapingOverride, kotLanguage);
-        success = success && result.ok;
-        warnings.push(...(result.warnings || []));
-        if (!result.ok && !failure) failure = result;
-      }
-    }
-
-    if (success) {
-      res.json({ success: true, warnings });
-    } else {
-      res.status(502).json({ error: failure?.detail || 'KOT print failed. Check printer connection.', detail: failure?.detail, failure_class: failure?.failureClass, code: failure?.code, correlation_id: failure?.correlationId, stage: failure?.stage });
+      res.status(502).json({
+        error: printResult.error || 'KOT print failed. Check printer connection.',
+        detail: printResult.detail,
+      });
     }
   } catch (error: any) {
     console.error('[Print KOT] Error:', error);
@@ -703,6 +654,105 @@ router.post('/print-kot', requirePermission('printing.execute'), asyncHandler(as
     res.status(500).json({ error: "Internal server error" });
   }
 }));
+
+export async function printOrderKOT(
+  orderId: number | string,
+  options?: {
+    items?: any[];
+    stationName?: string;
+    useUnicode?: boolean;
+    arabicShapingOverride?: boolean;
+    signal?: AbortSignal;
+  },
+  db: any = getDatabase(),
+): Promise<{ success: boolean; warnings: any[]; error?: string; detail?: string }> {
+  const kotSetting = db.prepare("SELECT value FROM settings WHERE key = 'kot_printing_enabled'").get() as { value?: string } | undefined;
+  if (kotSetting && kotSetting.value === 'false') {
+    return { success: true, warnings: ['KOT printing is disabled in settings'] };
+  }
+
+  const printer = db.prepare(
+    `SELECT * FROM printers
+     WHERE connection_type != 'webusb'
+     ORDER BY is_default DESC, name
+     LIMIT 1`,
+  ).get();
+
+  if (!printer) {
+    return { success: false, warnings: [], error: 'No default printer configured. Add a printer in Settings.' };
+  }
+
+  const order: any = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+  if (!order) {
+    return { success: false, warnings: [], error: 'Order not found' };
+  }
+
+  const kotLanguage = resolveTenantKotLanguage(db);
+  const orderItems: any[] = getEffectiveOrderItems(db, String(orderId));
+
+  if (order.table_id) {
+    const table: any = db.prepare('SELECT * FROM tables WHERE id = ?').get(order.table_id);
+    if (table) {
+      order.table = { name: table.number };
+    }
+  }
+  if (order.customer_id) {
+    const customer = db.prepare('SELECT name FROM customers WHERE id = ?').get(order.customer_id) as { name: string } | null;
+    if (customer) order.customer = { name: customer.name };
+  }
+
+  const kotSourceItems = (Array.isArray(options?.items) ? options.items : orderItems)
+    .filter((item: any) => isKotItemPending(item?.status));
+
+  if (kotSourceItems.length === 0) {
+    return { success: true, warnings: ['No pending items to print'] };
+  }
+
+  let success = true;
+  const warnings: any[] = [];
+  let failure: any = null;
+
+  if (options?.stationName) {
+    const station = options.stationName || 'Kitchen';
+    const result = await printKOTDetailed(
+      order,
+      kotSourceItems,
+      station,
+      options?.useUnicode || false,
+      undefined,
+      options?.signal,
+      options?.arabicShapingOverride,
+      kotLanguage,
+    );
+    success = result.ok;
+    failure = result.ok ? null : result;
+    if (result.warnings) warnings.push(...result.warnings);
+  } else {
+    const groups = routeItemsToStations(db, kotSourceItems).filter((g) => g.items.length > 0);
+    for (const group of groups) {
+      const result = await printKOTDetailed(
+        order,
+        group.items,
+        group.stationName,
+        options?.useUnicode || false,
+        group.printer || undefined,
+        options?.signal,
+        options?.arabicShapingOverride,
+        kotLanguage,
+      );
+      success = success && result.ok;
+      if (result.warnings) warnings.push(...result.warnings);
+      if (!result.ok && !failure) failure = result;
+    }
+  }
+
+  return {
+    success,
+    warnings,
+    error: failure ? (failure.detail || 'KOT print failed') : undefined,
+    detail: failure?.detail,
+  };
+}
 
 router.get('/delivery-slip-payment/:orderId', requirePermission('printing.execute'), (req: Request, res: Response) => {
   try {

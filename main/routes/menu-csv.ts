@@ -423,7 +423,7 @@ router.post('/import/products', requirePermission('catalog.import-export'), (req
     const taxCategoryIds = new Set(activePack.categories.map((category) => category.id));
     const regionalSnapshot = currentRegionalSnapshot();
 
-    let created = 0, updated = 0, reactivated = 0, skipped = 0, failed = 0;
+    let created = 0, updated = 0, reactivated = 0, skipped = 0, failed = 0, categoriesCreated = 0;
     const errors: string[] = [];
 
     db.transaction(() => { for (let i = 0; i < rows.length; i++) {
@@ -447,12 +447,37 @@ router.post('/import/products', requirePermission('catalog.import-export'), (req
       const cost = costResult.value;
 
       let categoryId: string | null = null;
-      if (r.category) {
-        categoryId = catMap[r.category.toLowerCase()] ?? null;
-        if (!categoryId) {
-          failed++;
-          errors.push(`Row ${i + 2} (${r.name}): category "${r.category}" not found — import categories first`);
-          continue;
+      if (r.category && r.category.trim()) {
+        const catName = r.category.trim();
+        const catKey = catName.toLowerCase();
+        if (catMap[catKey]) {
+          categoryId = catMap[catKey];
+        } else {
+          // Check if category exists in database (or was soft-deleted)
+          const existingCat = db
+            .prepare('SELECT id, deleted_at FROM categories WHERE LOWER(name) = ?')
+            .get(catKey) as { id: string; deleted_at: string | null } | undefined;
+          if (existingCat) {
+            if (existingCat.deleted_at) {
+              db.prepare('UPDATE categories SET deleted_at = NULL, is_active = 1, updated_at = ? WHERE id = ?').run(now(), existingCat.id);
+            }
+            categoryId = existingCat.id;
+            catMap[catKey] = categoryId;
+          } else {
+            // Auto-create category directly from product CSV!
+            const newCatId = randomUUID();
+            const slug = catName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `cat-${Date.now()}`;
+            const maxOrderRow = db.prepare('SELECT MAX(sort_order) as max_order FROM categories WHERE deleted_at IS NULL').get() as { max_order: number | null };
+            const nextSort = (maxOrderRow?.max_order ?? 0) + 1;
+            const timestamp = now();
+            db.prepare(`
+              INSERT INTO categories (id, name, slug, description, color, icon, sort_order, is_active, created_at, updated_at)
+              VALUES (?, ?, ?, NULL, 'blue', '🍽️', ?, 1, ?, ?)
+            `).run(newCatId, catName, slug, nextSort, timestamp, timestamp);
+            categoryId = newCatId;
+            catMap[catKey] = newCatId;
+            categoriesCreated++;
+          }
         }
       }
 
@@ -540,7 +565,7 @@ router.post('/import/products', requirePermission('catalog.import-export'), (req
       created++;
     } })();
 
-    res.json({ created, updated, reactivated, skipped, failed, errors });
+    res.json({ created, updated, reactivated, skipped, failed, errors, categories_created: categoriesCreated });
   } catch (err: any) {
     return csvImportErrorResponse(res, err);
   }

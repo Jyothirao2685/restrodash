@@ -5,23 +5,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  ShoppingCart,
   ClipboardList,
   Package,
   Grid3X3,
-  Users,
   UserCog,
   Settings,
   LogOut,
-  ChefHat,
   UserCircle,
-  MessageCircle,
   LifeBuoy,
   ChevronUp,
   Sun,
   Moon,
   Monitor,
-  Boxes,
   type LucideIcon,
 } from 'lucide-react';
 import { useTranslations, type AppConfig } from 'use-intl';
@@ -68,15 +63,10 @@ interface NavItem {
 
 // null = show for all business types
 const ALL_NAV_ITEMS: NavItem[] = [
-  { href: '/pos', labelKey: 'pos', icon: ShoppingCart, permission: 'pos.use', businessTypes: null },
   { href: '/dashboard', labelKey: 'dashboard', icon: LayoutDashboard, permission: 'dashboard.view', businessTypes: null },
+  { href: '/tables', labelKey: 'tables', icon: Grid3X3, permission: 'tables.view', businessTypes: null },
   { href: '/orders', labelKey: 'orders', icon: ClipboardList, permission: 'orders.read', businessTypes: null },
-  { href: '/whatsapp', labelKey: 'whatsapp', icon: MessageCircle, permission: 'whatsapp.use', businessTypes: null },
   { href: '/products', labelKey: 'products', icon: Package, permission: 'catalog.manage', businessTypes: null },
-  { href: '/inventory', labelKey: 'inventory', icon: Boxes, permission: 'inventory.view', businessTypes: null },
-  { href: '/tables', labelKey: 'tables', icon: Grid3X3, permission: 'tables.view', businessTypes: ['restaurant'] },
-  { href: '/settings?tab=kds', labelKey: 'kds', icon: ChefHat, permission: 'kitchen.stations.manage', businessTypes: ['restaurant'] },
-  { href: '/customers', labelKey: 'customers', icon: Users, permission: 'customers.view', businessTypes: null },
   { href: '/staff', labelKey: 'staff', icon: UserCog, permission: 'staff.view', businessTypes: null },
   { href: '/settings', labelKey: 'settings', icon: Settings, permission: 'settings.view', businessTypes: null },
 ];
@@ -84,7 +74,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
 export default function AppSidebar() {
   const pathname = usePathname();
   const { user, currentTenant, logout } = useAuthStore();
-  const { tablesRequired, kdsEnabled, whatsappEnabled, setTablesRequired, setKdsEnabled, setWhatsappEnabled } = usePosSettingsStore();
+  const { setTablesRequired } = usePosSettingsStore();
   const { isMobile, setOpenMobile } = useSidebar();
   const t = useTranslations('nav');
   const tCommon = useTranslations('common');
@@ -101,13 +91,7 @@ export default function AppSidebar() {
       : tSettings('themeSystem');
   const ThemeModeIcon = themeModeIcon;
 
-  const businessType = currentTenant?.business_type || 'restaurant';
   const navItems = ALL_NAV_ITEMS.filter((item) => {
-    if (item.href === '/tables' && !tablesRequired) return false;
-    // Hide KDS settings navigation when KDS is disabled.
-    if (item.href === '/settings?tab=kds' && !kdsEnabled) return false;
-    // WhatsApp integration not enabled on this tenant → hide the nav entry.
-    if (item.href === '/whatsapp' && !whatsappEnabled) return false;
     const permitted = item.href === '/staff'
       ? tenantCan(currentTenant, 'staff.view') || tenantCan(currentTenant, 'authorization.manage')
       : item.href === '/settings'
@@ -118,30 +102,13 @@ export default function AppSidebar() {
             'database.manage', 'mobile-access.manage', 'kitchen.stations.manage', 'whatsapp.manage',
           ].some((permission) => tenantCan(currentTenant, permission as PermissionId))
         : tenantCan(currentTenant, item.permission);
-    return permitted
-      && (item.businessTypes === null || item.businessTypes.includes(businessType));
+    return permitted;
   });
   const homeHref = getLandingPage(currentTenant);
 
   useEffect(() => {
-    if (!currentTenant) return;
-    api.get('/settings/business')
-      .then((res) => {
-        setTablesRequired(typeof res.data.tables_required === 'boolean' ? res.data.tables_required : true);
-      })
-      .catch(() => { });
-    api.get('/settings/kds_enabled')
-      .then((res) => setKdsEnabled(res.data.setting?.value !== 'false'))
-      .catch(() => { });
-    if (tenantCan(currentTenant, 'whatsapp.use')) {
-      // Sync WhatsApp status so the sidebar only shows the entry when enabled.
-      api.get('/whatsapp/status')
-        .then((res) => setWhatsappEnabled(!!res.data?.enabled))
-        .catch(() => { });
-    } else {
-      setWhatsappEnabled(false);
-    }
-  }, [currentTenant, setTablesRequired, setKdsEnabled, setWhatsappEnabled]);
+    setTablesRequired(true);
+  }, [setTablesRequired]);
 
   useEffect(() => {
     if (!tenantCan(currentTenant, 'cloud.account.manage')) return;

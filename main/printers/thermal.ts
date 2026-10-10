@@ -2806,7 +2806,7 @@ public static class FloRawPrinter {
             EnsureReady(hPrinter);
 
             DOCINFO docInfo = new DOCINFO();
-            docInfo.pDocName = "FloCafe Receipt";
+            docInfo.pDocName = "Restro Dash Receipt";
             docInfo.pDataType = "RAW";
 
             uint jobId = StartDocPrinter(hPrinter, 1, docInfo);

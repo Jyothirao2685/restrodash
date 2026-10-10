@@ -179,6 +179,8 @@ export interface Order {
   delivery_address?: string | null;
   type: 'dine_in' | 'takeaway' | 'delivery' | 'online';
   status: 'pending' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
+  approval_status?: 'pending_approval' | 'approved' | 'rejected' | null;
+  is_qr?: boolean | number;
   subtotal: number;
   tax_amount: number;
   discount_amount: number;

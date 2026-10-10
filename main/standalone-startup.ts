@@ -2,7 +2,7 @@ export type StandaloneStartupOptions = {
   initializeDatabase: () => void | Promise<void>;
   prepare?: () => void | Promise<void>;
   startServer: () => Promise<void>;
-  startKdsServer: () => Promise<void>;
+  startKdsServer?: () => Promise<void>;
   startServerApp?: () => Promise<void>;
   isShutdownRequested: () => boolean;
 };
@@ -29,9 +29,12 @@ export async function startStandaloneServers({
   await prepare?.();
   throwIfShutdownRequested(isShutdownRequested);
   await startServer();
-  throwIfShutdownRequested(isShutdownRequested);
-  await startKdsServer();
-  throwIfShutdownRequested(isShutdownRequested);
-  await startServerApp?.();
-  throwIfShutdownRequested(isShutdownRequested);
+  if (startKdsServer) {
+    throwIfShutdownRequested(isShutdownRequested);
+    await startKdsServer();
+  }
+  if (startServerApp) {
+    throwIfShutdownRequested(isShutdownRequested);
+    await startServerApp();
+  }
 }

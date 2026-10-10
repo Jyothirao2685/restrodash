@@ -1148,6 +1148,27 @@ router.put('/:id', requirePermission('catalog.manage'), (req: Request, res: Resp
   }
 });
 
+router.patch('/:id/toggle-availability', requirePermission('catalog.manage'), (req: Request, res: Response) => {
+  try {
+    const db = getDatabase();
+    const product = db.prepare('SELECT id, name, is_active FROM products WHERE id = ? AND deleted_at IS NULL').get(req.params.id) as any;
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    const newActive = product.is_active === 1 ? 0 : 1;
+    db.prepare('UPDATE products SET is_active = ?, updated_at = ? WHERE id = ?').run(newActive, now(), product.id);
+    const updated = db.prepare('SELECT * FROM products WHERE id = ?').get(product.id);
+    res.json({
+      success: true,
+      product: serializeProduct(updated),
+      is_active: newActive === 1,
+    });
+  } catch (error: any) {
+    console.error('[API] Toggle product availability error:', error);
+    res.status(500).json({ error: 'Failed to toggle product availability' });
+  }
+});
+
 router.delete('/:id', requirePermission('catalog.manage'), (req: Request, res: Response) => {
   try {
     const db = getDatabase();

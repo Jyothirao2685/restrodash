@@ -1,7 +1,7 @@
 {
-  "name": "Flo",
-  "short_name": "Flo",
-  "description": "Smart Point of Sale for restaurants, salons, and retail",
+  "name": "Restro Dash",
+  "short_name": "Restro Dash",
+  "description": "Restro Dash - Modern POS & Collaborative QR Ordering",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#ffffff",

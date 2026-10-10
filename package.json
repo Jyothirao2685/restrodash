@@ -259,10 +259,10 @@
     "test:kitchen-delivery-enforcement": "node tests/run-electron-node-test.cjs tests/kitchen-delivery-enforcement.test.ts"
   },
   "author": {
-    "name": "Flo",
-    "email": "support@flo.local"
+    "name": "Restro Dash",
+    "email": "support@restrodash.com"
   },
-  "homepage": "https://flopos.com",
+  "homepage": "https://restrodash.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/FreeOpenSourcePOS/FloCafe.git"
@@ -330,7 +330,7 @@
   },
   "build": {
     "appId": "com.flo.desktop",
-    "productName": "Flo Cafe",
+    "productName": "Restro Dash",
     "icon": "assets/icon-512.png",
     "afterPack": "scripts/afterPack.js",
     "asar": true,
@@ -387,7 +387,7 @@
       "publisherDisplayName": "Codify Apps Private Limited",
       "identityName": "CodifyAppsPrivateLimited.FloCafe",
       "publisher": "CN=34AFD24D-EC88-44B8-B309-08BB8A6BB5F7",
-      "displayName": "Flo Cafe",
+      "displayName": "Restro Dash",
       "languages": [
         "en-US"
       ]
@@ -502,7 +502,7 @@
       ],
       "desktop": {
         "entry": {
-          "Name": "Flo Cafe",
+          "Name": "Restro Dash",
           "Comment": "Free, open-source POS for cafes and restaurants",
           "GenericName": "Point of Sale",
           "Keywords": "pos;point of sale;restaurant;cafe;billing;invoice;",

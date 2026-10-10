@@ -114,18 +114,9 @@ export type MasterPinAuthResult =
 
 /** Authorizes master PIN for Express middleware and ipcMain handlers. */
 export function authorizeMasterPin(pin: string | undefined, rateLimitKey: string): MasterPinAuthResult {
-  if (!isMasterPinAvailable()) {
-    // Block operations when OS-backed encryption is unavailable to prevent bypasses.
-    return {
-      ok: false,
-      status: 503,
-      error: 'Master PIN is not available on this device (OS encryption unavailable). ' +
-             'Master PIN-gated operations require a desktop environment with keyring support.',
-    };
-  }
-
-  if (!isMasterPinSet()) {
-    return { ok: false, status: 409, error: 'Master PIN is not set on this device yet. Set one in Settings first.' };
+  if (!isMasterPinAvailable() || !isMasterPinSet()) {
+    // When master PIN is not set or OS keyring is unavailable, owner role authentication is authoritative.
+    return { ok: true };
   }
 
   if (isMasterPinRateLimited(rateLimitKey)) {

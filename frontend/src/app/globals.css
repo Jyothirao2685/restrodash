@@ -507,3 +507,16 @@ html.dark::-webkit-scrollbar-thumb:hover,
 [dir="rtl"] .rtl-flip {
   transform: scaleX(-1);
 }
+
+/* ── Adaptive brand logo filter ──────────────────────────────────────────────
+ * Dark mode turns the black brand logo pure white using CSS filter.
+ */
+.restro-logo {
+  filter: none;
+  transition: filter 150ms ease;
+}
+
+.dark .restro-logo,
+[data-theme="dark"] .restro-logo {
+  filter: brightness(0) invert(1);
+}

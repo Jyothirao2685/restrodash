@@ -6,11 +6,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth';
 import api from '@/lib/api';
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Banknote, BarChart3, CalendarDays, ChefHat, ChevronDown, ClipboardList, Clock, Download, FileSpreadsheet, FileText, Hourglass, LayoutGrid, Lock, Minus, ReceiptText, RotateCcw, Tags, Timer, TrendingUp, Trophy, Wallet, type LucideIcon } from 'lucide-react';
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Banknote, BarChart3, CalendarDays, ChefHat, ChevronDown, ClipboardList, Clock, Download, FileSpreadsheet, FileText, Hourglass, LayoutGrid, Minus, ReceiptText, RotateCcw, Tags, Timer, TrendingUp, Trophy, Wallet, type LucideIcon } from 'lucide-react';
 import { useTranslations, useLocale, type AppConfig } from 'use-intl';
 import { Ltr } from '@/components/layout/Ltr';
-import { CashCloseModal } from '@/components/dashboard/CashCloseModal';
-import { useCashClose } from '@/hooks/useCashClose';
+
 import toast from 'react-hot-toast';
 import { useFormatCurrency } from '@/hooks/useFormatCurrency';
 import { useFormatDate } from '@/hooks/useFormatDate';
@@ -337,20 +336,7 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOwner, canViewFinancials, periodMode, selectedDate, selectedMonth]);
 
-  // Day-close wizard lives in useCashClose + CashCloseModal; the page
-  // only opens it and mounts it.
-  const cashClose = useCashClose();
-  const { openCloseModal } = cashClose;
-  const cashCloseAction = searchParams.get('action');
-  const requestedCashCloseView = searchParams.get('view');
-  const cashCloseView = requestedCashCloseView === 'x-report' || requestedCashCloseView === 'z-report'
-    ? requestedCashCloseView
-    : null;
-  useEffect(() => {
-    if (cashCloseAction !== 'cash-close') return;
-    openCloseModal(cashCloseView);
-    router.replace('/dashboard', { scroll: false });
-  }, [cashCloseAction, cashCloseView, openCloseModal, router]);
+
 
   const exportDailySales = async (format: 'xlsx' | 'csv') => {
     if (periodMode !== 'day' || isExporting) return;
@@ -623,14 +609,6 @@ export default function DashboardPage() {
 
           <span className="mx-1 hidden h-7 w-px bg-border xl:block" aria-hidden="true" />
 
-          <Button
-            type="button"
-            onClick={() => cashClose.openCloseModal()}
-            className="h-10 rounded-xl bg-brand px-4 text-white shadow-sm hover:bg-brand-hover"
-          >
-            <Lock size={14} />
-            {t('closeShift')}
-          </Button>
           {periodMode === 'day' && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -660,8 +638,6 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
-
-      <CashCloseModal model={cashClose} />
 
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" role="status" aria-live="polite">

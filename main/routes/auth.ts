@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import { getCurrentSchemaVersion, getDatabase, getSettingValue, now } from '../db';
 import { getJWTSecret } from '../security/jwt-secret';
 import { seedSetupProfile } from '../setup/seed-data';
@@ -699,7 +699,7 @@ router.post('/setup/initialize', (req: Request, res: Response) => {
     }
 
     if (!VALID_BUSINESS_TYPES.has(normalizedBusinessType)) {
-      return res.status(400).json({ error: 'FloCafe setup only supports restaurant businesses' });
+      return res.status(400).json({ error: 'Restro Dash setup only supports restaurant businesses' });
     }
 
     if (!VALID_SETUP_PROFILES.has(normalizedSetupProfile)) {
@@ -764,28 +764,60 @@ router.post('/setup/initialize', (req: Request, res: Response) => {
         tax_registration_number,
         state_code,
         tax_registered,
-        billing_type: billing_type || (normalizedServiceModel === 'qsr' ? 'prepaid' : 'postpaid'),
-        tables_required: normalizedServiceModel === 'finedine' ? 'true' : 'false',
-        service_model: normalizedServiceModel,
-        setup_profile: pendingCurrencyReset ? 'empty' : normalizedSetupProfile,
+        billing_type: 'postpaid',
+        tables_required: 'true',
+        service_model: 'finedine',
+        setup_profile: 'empty',
         onboarding_completed: 'true',
         // Confirm country if user explicitly selected it or differed from default.
         ...countryConfirmationPatch(resolvedCountry.code, getSettingValue('country'), req.body.country_selected),
         anonymous_data_consent: 'true',
-        telemetry_enabled: 'true',
-        telemetry_scope: 'usage_stats,country,app_version,platform,session_duration,feature_usage,error_diagnostics',
+        telemetry_enabled: 'false',
+        telemetry_scope: '',
         split_checks_enabled: 'false',
-        // '1'/'0', not 'true'/'false' — mirrors FloAdmin's own `stores` table and
-        // matches how cloud-sync.ts reads this key everywhere else.
-        cloud_sync_enabled: cloudSyncEnabled ? '1' : '0',
-        cloud_server_url: normalizedCloudServerUrl || DEFAULT_CLOUD_SERVER_URL,
-        email_product_updates: email_product_updates === true ? 'true' : 'false',
-        email_marketing: email_marketing === true ? 'true' : 'false',
-        cloud_services_disabled_by_user: 'false',
+        cloud_sync_enabled: '0',
+        cloud_server_url: '',
+        email_product_updates: 'false',
+        email_marketing: 'false',
+        cloud_services_disabled_by_user: 'true',
       });
 
       if (!pendingCurrencyReset) {
         seedSetupProfile(db, normalizedSetupProfile, normalizedServiceModel, language, resolvedCountry.code);
+        // Ensure initial tables exist with QR tokens based on user-specified table count
+        const tblCount = (db.prepare('SELECT COUNT(*) as count FROM tables').get() as any)?.count || 0;
+        if (tblCount === 0) {
+          const countToCreate = Math.max(1, Math.min(100, Number(req.body.table_count || req.body.tables_count || 10)));
+          const timestamp = now();
+          const insertTbl = db.prepare(`
+            INSERT OR REPLACE INTO tables (id, number, capacity, status, floor, section, position_x, position_y, is_active, qr_token, qr_enabled, created_at, updated_at)
+            VALUES (?, ?, ?, 'available', ?, ?, ?, ?, 1, ?, 1, ?, ?)
+          `);
+          for (let i = 1; i <= countToCreate; i++) {
+            const numStr = String(i).padStart(2, '0');
+            const col = (i - 1) % 4;
+            const row = Math.floor((i - 1) / 4);
+            const posX = 10 + col * 22;
+            const posY = 15 + row * 18;
+            insertTbl.run(
+              `tbl-${numStr}`,
+              `T-${numStr}`,
+              4,
+              'Ground Floor',
+              'Main Dining',
+              posX,
+              posY,
+              `tbl_tok_${randomBytes(16).toString('hex')}`,
+              timestamp,
+              timestamp
+            );
+          }
+        }
+        const upiExists = db.prepare('SELECT id FROM payment_methods WHERE name = ?').get('UPI');
+        if (!upiExists) {
+          const timestamp = now();
+          db.prepare('INSERT INTO payment_methods (name, is_active, sort_order, created_at, updated_at) VALUES (?, 1, 1, ?, ?)').run('UPI', timestamp, timestamp);
+        }
       }
       if (pendingCurrencyReset) {
         db.prepare("DELETE FROM _flo_meta WHERE key = 'currency_reset_pending'").run();

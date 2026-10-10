@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
-import { Building2, Hash, CreditCard, Lock } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Building2, Hash, CreditCard, Lock, Smartphone, ExternalLink } from 'lucide-react';
 import { useTranslations, useLocale } from 'use-intl';
 import { Ltr } from '@/components/layout/Ltr';
 import { Toggle } from '@/components/settings/Toggle';
@@ -139,9 +139,28 @@ export function GeneralSettingsTab({
   const setLanguage = usePosSettingsStore((state) => state.setLanguage);
   const languageRequestId = useRef(0);
 
+  const [serverAppEnabled, setServerAppEnabled] = useState(true);
+
   useEffect(() => () => {
     languageRequestId.current += 1;
   }, []);
+
+  useEffect(() => {
+    api.get('/settings/server_app_enabled')
+      .then(({ data }) => setServerAppEnabled(data.setting?.value !== 'false'))
+      .catch(() => setServerAppEnabled(true));
+  }, []);
+
+  const handleToggleServerApp = async (enabled: boolean) => {
+    setServerAppEnabled(enabled);
+    try {
+      await api.put('/settings/server_app_enabled', { value: enabled ? 'true' : 'false' });
+      toast.success(enabled ? 'Server App enabled' : 'Server App disabled');
+    } catch {
+      setServerAppEnabled(!enabled);
+      toast.error('Failed to update Server App setting');
+    }
+  };
 
   const sortedCountries = useMemo(() => sortCountriesByLocalizedName(COUNTRIES, locale), [locale]);
 
@@ -701,6 +720,61 @@ export function GeneralSettingsTab({
                     : () => {}
                 }
               />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Server App & Tableside Ordering */}
+      <div className="bg-card rounded-xl border border-border p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Smartphone size={20} className="text-muted-foreground" />
+          <h2 className="font-semibold text-foreground">Server App & Staff Access</h2>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Enable tableside ordering so servers and waiters can take customer orders directly from mobile phones or tablets.
+        </p>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between py-2 border-b border-border">
+            <div>
+              <span className="text-sm font-medium text-foreground">Server App Tableside Ordering</span>
+              <p className="text-xs text-muted-foreground">Allow staff devices to connect and submit orders</p>
+            </div>
+            <Toggle
+              value={serverAppEnabled}
+              label="Enable Server App"
+              onChange={isAdmin ? handleToggleServerApp : () => {}}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            <div className="p-3 bg-muted/40 rounded-lg border border-border space-y-1.5">
+              <span className="text-xs font-semibold text-foreground block">Server App (Port 3003)</span>
+              <p className="text-[11px] text-muted-foreground font-mono">http://localhost:3003/server-standalone</p>
+              <a
+                href="/server-standalone"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-brand hover:underline pt-1"
+              >
+                <span>Open Server App</span>
+                <ExternalLink size={12} />
+              </a>
+            </div>
+
+            <div className="p-3 bg-muted/40 rounded-lg border border-border space-y-1.5">
+              <span className="text-xs font-semibold text-foreground block">Kitchen Display System (Port 3002)</span>
+              <p className="text-[11px] text-muted-foreground font-mono">http://localhost:3002/kds</p>
+              <a
+                href="http://localhost:3002/kds"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-brand hover:underline pt-1"
+              >
+                <span>Open KDS</span>
+                <ExternalLink size={12} />
+              </a>
             </div>
           </div>
         </div>

@@ -412,7 +412,19 @@ export function getDbPath(): string {
     ? path.resolve(__dirname, '../..')
     : path.resolve(__dirname, '..');
   const userDataPath = app.isPackaged ? app.getPath('userData') : projectRoot;
-  return path.join(userDataPath, 'flo.db');
+  const restroDbPath = path.join(userDataPath, 'restro.db');
+  const legacyFloDbPath = path.join(userDataPath, 'flo.db');
+  if (!fs.existsSync(restroDbPath) && fs.existsSync(legacyFloDbPath)) {
+    try {
+      fs.renameSync(legacyFloDbPath, restroDbPath);
+      if (fs.existsSync(legacyFloDbPath + '-wal')) fs.renameSync(legacyFloDbPath + '-wal', restroDbPath + '-wal');
+      if (fs.existsSync(legacyFloDbPath + '-shm')) fs.renameSync(legacyFloDbPath + '-shm', restroDbPath + '-shm');
+    } catch {
+      // fallback to legacy path if rename fails
+      return legacyFloDbPath;
+    }
+  }
+  return restroDbPath;
 }
 
 function getBackupDir(): string {
@@ -5541,6 +5553,19 @@ export const MIGRATIONS: { version: number; name: string; up: () => void }[] = [
       }
     },
   },
+  {
+    version: 101,
+    name: 'add_table_collaborative_ordering_fields',
+    up: () => {
+      const tableColumns = getColumns(db, 'tables');
+      if (!tableColumns.includes('qr_session_code')) {
+        db.exec('ALTER TABLE tables ADD COLUMN qr_session_code TEXT DEFAULT NULL');
+      }
+      if (!tableColumns.includes('shared_cart_json')) {
+        db.exec('ALTER TABLE tables ADD COLUMN shared_cart_json TEXT DEFAULT NULL');
+      }
+    },
+  },
 ];
 
 function syncBackupBeforeMigration(fromVersion: number, toVersion: number): void {
@@ -5788,6 +5813,8 @@ function createSchema(): void {
       qr_token TEXT UNIQUE,
       active_session_key TEXT DEFAULT NULL,
       qr_session_started_at TEXT DEFAULT NULL,
+      qr_session_code TEXT DEFAULT NULL,
+      shared_cart_json TEXT DEFAULT NULL,
       qr_enabled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,

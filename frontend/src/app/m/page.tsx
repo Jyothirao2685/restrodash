@@ -16,6 +16,8 @@ import {
   RefreshCw,
   Sparkles,
   Info,
+  Users,
+  Trash2,
 } from 'lucide-react';
 
 interface Product {
@@ -83,7 +85,10 @@ interface ActiveOrder {
 
 interface MenuResponse {
   locked: boolean;
-  is_owner?: boolean;
+  is_host?: boolean;
+  is_joined?: boolean;
+  has_active_host?: boolean;
+  session_code?: string | null;
   table_number?: string;
   reason?: string;
   restaurant?: {
@@ -103,11 +108,12 @@ interface MenuResponse {
   addon_groups?: AddonGroup[];
   product_addon_groups?: Record<string, string[]>;
   active_orders?: ActiveOrder[];
+  shared_cart?: CartItem[];
 }
 
 function getOrCreateDeviceSessionKey(): string {
   if (typeof window === 'undefined') return '';
-  const KEY = 'flo_customer_device_session_key';
+  const KEY = 'restro_customer_device_session_key';
   let key = localStorage.getItem(KEY);
   if (!key) {
     key = 'dsk_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
@@ -129,9 +135,19 @@ function CustomerMenuContent() {
     return null;
   });
   const [sessionKey] = useState<string>(() => getOrCreateDeviceSessionKey());
+  const [tableCode, setTableCode] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return (token ? localStorage.getItem(`restro_code_${token}`) : '') || '';
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [menuData, setMenuData] = useState<MenuResponse | null>(null);
+
+  // Collaborative dining join modal
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   // Filter & Search states
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -155,12 +171,40 @@ function CustomerMenuContent() {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
 
+  // Refresh helper for polling & post-order refresh
+  const refreshMenu = useCallback(async (isSilent = false, overrideCode?: string) => {
+    if (!token || !sessionKey) return;
+    const activeCode = overrideCode !== undefined ? overrideCode : tableCode;
+    try {
+      if (!isSilent) setLoading(true);
+      const res = await fetch(`/api/public/table/${encodeURIComponent(token)}`, {
+        headers: {
+          'x-device-session-key': sessionKey,
+          ...(activeCode ? { 'x-table-session-code': activeCode } : {}),
+        },
+      });
+      if (res.ok) {
+        const data: MenuResponse = await res.json();
+        setMenuData(data);
+        if (data.active_orders) setActiveOrders(data.active_orders);
+        if (data.shared_cart && (data.is_host || data.is_joined)) {
+          setCart(data.shared_cart);
+        }
+      }
+    } catch {} finally {
+      if (!isSilent) setLoading(false);
+    }
+  }, [token, sessionKey, tableCode]);
+
   // Initial load
   useEffect(() => {
     let ignore = false;
     if (token && sessionKey) {
       fetch(`/api/public/table/${encodeURIComponent(token)}`, {
-        headers: { 'x-device-session-key': sessionKey },
+        headers: {
+          'x-device-session-key': sessionKey,
+          ...(tableCode ? { 'x-table-session-code': tableCode } : {}),
+        },
       })
         .then((res) => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -170,6 +214,9 @@ function CustomerMenuContent() {
           if (!ignore) {
             setMenuData(data);
             if (data.active_orders) setActiveOrders(data.active_orders);
+            if (data.shared_cart && (data.is_host || data.is_joined)) {
+              setCart(data.shared_cart);
+            }
             setLoading(false);
           }
         })
@@ -183,36 +230,51 @@ function CustomerMenuContent() {
     return () => {
       ignore = true;
     };
-  }, [token, sessionKey]);
+  }, [token, sessionKey, tableCode]);
 
-  // Refresh helper for polling & post-order refresh
-  const refreshMenu = useCallback(async (isSilent = false) => {
-    if (!token || !sessionKey) return;
-    try {
-      if (!isSilent) setLoading(true);
-      const res = await fetch(`/api/public/table/${encodeURIComponent(token)}`, {
-        headers: { 'x-device-session-key': sessionKey },
-      });
-      if (res.ok) {
-        const data: MenuResponse = await res.json();
-        setMenuData(data);
-        if (data.active_orders) setActiveOrders(data.active_orders);
-      }
-    } catch {} finally {
-      if (!isSilent) setLoading(false);
-    }
-  }, [token, sessionKey]);
-
-  // Periodic polling for order status updates if customer has active orders
+  // Real-time polling & sync: 1.5s interval whenever on the mobile menu + immediate on focus
   useEffect(() => {
-    if (!token || !sessionKey || activeOrders.length === 0) return;
+    if (!token || !sessionKey) return;
 
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       refreshMenu(true);
-    }, 5000);
+    }, 1500);
 
-    return () => clearInterval(interval);
-  }, [token, sessionKey, activeOrders.length, refreshMenu]);
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshMenu(true);
+      }
+    };
+    const onFocus = () => {
+      refreshMenu(true);
+    };
+
+    window.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [token, sessionKey, refreshMenu]);
+
+  // Sync with device system theme: dark if system is dark, light if system is light
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const updateTheme = () => {
+      if (mq.matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+    updateTheme();
+    mq.addEventListener('change', updateTheme);
+    return () => mq.removeEventListener('change', updateTheme);
+  }, []);
 
   const currencySymbol = useMemo(() => {
     const cur = menuData?.restaurant?.currency || 'INR';
@@ -275,21 +337,61 @@ function CustomerMenuContent() {
       // Direct add
       setCart((prev) => {
         const existingIdx = prev.findIndex((item) => item.product.id === product.id && item.addons.length === 0);
+        let updated: CartItem[];
         if (existingIdx >= 0) {
-          const updated = [...prev];
+          updated = [...prev];
           updated[existingIdx].quantity += 1;
-          return updated;
+        } else {
+          updated = [
+            ...prev,
+            {
+              id: 'cart_' + Math.random().toString(36).substring(2, 9),
+              product,
+              quantity: 1,
+              addons: [],
+            },
+          ];
         }
-        return [
-          ...prev,
-          {
-            id: 'cart_' + Math.random().toString(36).substring(2, 9),
-            product,
-            quantity: 1,
-            addons: [],
-          },
-        ];
+        syncCartToServer(updated);
+        return updated;
       });
+    }
+  };
+
+  const syncCartToServer = useCallback((newCart: CartItem[]) => {
+    if (!token) return;
+    fetch(`/api/public/table/${encodeURIComponent(token)}/cart`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-device-session-key': sessionKey,
+        ...(tableCode ? { 'x-table-session-code': tableCode } : {}),
+      },
+      body: JSON.stringify({ cart: newCart }),
+    }).catch(() => {});
+  }, [token, sessionKey, tableCode]);
+
+  const handleJoinTable = async (code: string) => {
+    if (!code.trim() || !token) return;
+    setJoining(true);
+    setJoinError(null);
+    try {
+      const res = await fetch(`/api/public/table/${encodeURIComponent(token)}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-device-session-key': sessionKey },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to join table');
+      localStorage.setItem(`restro_code_${token}`, code.trim());
+      setTableCode(code.trim());
+      setShowJoinModal(false);
+      if (data.shared_cart) setCart(data.shared_cart);
+      await refreshMenu(false, code.trim());
+    } catch (err: unknown) {
+      setJoinError(err instanceof Error ? err.message : 'Invalid code');
+    } finally {
+      setJoining(false);
     }
   };
 
@@ -297,16 +399,20 @@ function CustomerMenuContent() {
     if (!activeCustomizingProduct) return;
     const addonsList = Object.values(selectedAddons);
 
-    setCart((prev) => [
-      ...prev,
-      {
-        id: 'cart_' + Math.random().toString(36).substring(2, 9),
-        product: activeCustomizingProduct,
-        quantity: 1,
-        addons: addonsList,
-        special_instructions: itemInstructions.trim() || undefined,
-      },
-    ]);
+    setCart((prev) => {
+      const updated = [
+        ...prev,
+        {
+          id: 'cart_' + Math.random().toString(36).substring(2, 9),
+          product: activeCustomizingProduct,
+          quantity: 1,
+          addons: addonsList,
+          special_instructions: itemInstructions.trim() || undefined,
+        },
+      ];
+      syncCartToServer(updated);
+      return updated;
+    });
 
     setActiveCustomizingProduct(null);
     setSelectedAddons({});
@@ -315,7 +421,7 @@ function CustomerMenuContent() {
 
   const updateCartQuantity = (cartItemId: string, delta: number) => {
     setCart((prev) => {
-      return prev
+      const updated = prev
         .map((item) => {
           if (item.id === cartItemId) {
             const newQty = item.quantity + delta;
@@ -324,6 +430,8 @@ function CustomerMenuContent() {
           return item;
         })
         .filter(Boolean) as CartItem[];
+      syncCartToServer(updated);
+      return updated;
     });
   };
 
@@ -378,10 +486,10 @@ function CustomerMenuContent() {
   // 1. Loading State
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex flex-col items-center justify-center p-6 text-center">
-        <div className="h-12 w-12 rounded-full border-4 border-orange-500 border-t-transparent animate-spin mb-4" />
-        <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-200">Loading Menu...</h2>
-        <p className="text-sm text-neutral-500 mt-1">Preparing fresh dishes for you</p>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+        <div className="h-10 w-10 rounded-full border-2 border-foreground border-t-transparent animate-spin mb-4" />
+        <h2 className="text-lg font-bold text-foreground">Loading Menu...</h2>
+        <p className="text-xs text-muted-foreground mt-1">Instant, zero-latency sync</p>
       </div>
     );
   }
@@ -389,74 +497,136 @@ function CustomerMenuContent() {
   // 2. Error State
   if (error || !menuData) {
     return (
-      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex flex-col items-center justify-center p-6 text-center">
-        <div className="h-16 w-16 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full flex items-center justify-center mb-4">
-          <AlertTriangle size={32} />
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+        <div className="h-14 w-14 bg-destructive/10 text-destructive rounded-full flex items-center justify-center mb-4">
+          <AlertTriangle size={28} />
         </div>
-        <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">Unable to Open Menu</h2>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-sm mt-2">{error || 'Invalid QR code.'}</p>
+        <h2 className="text-lg font-bold text-foreground">Unable to Open Menu</h2>
+        <p className="text-xs text-muted-foreground max-w-sm mt-2">{error || 'Invalid QR code.'}</p>
         {token && (
           <button
             onClick={() => refreshMenu(false)}
-            className="mt-6 px-6 py-2.5 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-semibold rounded-xl text-sm shadow hover:opacity-90 transition-opacity flex items-center gap-2"
+            className="mt-6 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl text-xs shadow hover:opacity-90 transition-opacity flex items-center gap-2"
           >
-            <RefreshCw size={16} /> Retry
+            <RefreshCw size={14} /> Retry
           </button>
         )}
       </div>
     );
   }
 
-  // 3. Table Occupied / Session Locked State
-  if (menuData.locked) {
+  // 3. Occupied Table Screen (when table is active with a host and device has not joined)
+  if (!menuData.is_host && !menuData.is_joined) {
     return (
-      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex flex-col items-center justify-center p-6 text-center">
-        <div className="h-20 w-20 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-full flex items-center justify-center mb-5">
-          <Utensils size={40} />
-        </div>
-        <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
-          Table {menuData.table_number || ''} is Occupied
-        </h2>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-sm mt-3 leading-relaxed">
-          {menuData.reason || 'This table currently has an active dining session. Please scan your own table’s QR code or ask your server for assistance.'}
-        </p>
-        <div className="mt-8 p-4 bg-card rounded-xl border border-border max-w-xs w-full text-xs text-muted-foreground">
-          Tip: If you are sitting at this table, please ask your waiter to take your order or settle the previous check.
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="h-12 w-12 mx-auto rounded-full bg-muted flex items-center justify-center text-foreground">
+            <Users size={22} />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-foreground">
+              Table {menuData.table?.number || menuData.table_number} is Occupied
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">
+              Dining with friends?
+            </p>
+          </div>
+
+          <div className="pt-2 space-y-3">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Ask the host at Table {menuData.table?.number || menuData.table_number} for the 4-digit code shown at the top of their screen.
+            </p>
+            {joinError && (
+              <div className="p-2.5 bg-destructive/10 text-destructive text-xs rounded-lg border border-destructive/20 font-medium">
+                {joinError}
+              </div>
+            )}
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={4}
+              placeholder="0000"
+              value={joinCodeInput}
+              onChange={(e) => setJoinCodeInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              className="w-full text-center text-3xl font-mono tracking-widest font-black py-2.5 bg-muted/40 border border-border rounded-xl focus:ring-1 focus:ring-foreground/20 outline-hidden"
+              autoFocus
+            />
+            <button
+              onClick={() => handleJoinTable(joinCodeInput)}
+              disabled={joining || joinCodeInput.length !== 4}
+              className="w-full py-3 bg-foreground text-background hover:opacity-95 disabled:opacity-50 rounded-xl font-bold text-sm shadow transition-opacity flex items-center justify-center gap-2"
+            >
+              {joining ? (
+                <>
+                  <RefreshCw className="animate-spin" size={15} />
+                  <span>Connecting to Table...</span>
+                </>
+              ) : (
+                <span>Join Table</span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 pb-28">
-      {/* Top Banner / Restaurant Info */}
+    <div className="min-h-screen bg-background text-foreground pb-28">
+      {/* Top Header: Only Logo + Table and Track */}
       <header className="sticky top-0 z-30 bg-card/95 backdrop-blur border-b border-border px-4 py-3 shadow-xs">
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-black tracking-tight leading-tight flex items-center gap-1.5">
-              <span>{menuData.restaurant?.name || 'FloCafe'}</span>
-            </h1>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-              <span className="font-semibold text-orange-600 dark:text-orange-400">
-                Table {menuData.table?.number}
-              </span>
-              {menuData.restaurant?.address && (
-                <span>&bull; {menuData.restaurant.address}</span>
-              )}
-            </div>
+          <div className="flex items-center gap-2.5">
+            <img src="/restro-logo.png" alt="Logo" className="h-7 w-auto object-contain restro-logo dark:brightness-0 dark:invert" />
+            <div className="h-3.5 w-px bg-border" />
+            <span className="text-sm font-bold text-foreground tracking-tight">
+              Table {menuData.table?.number}
+            </span>
           </div>
 
-          {activeOrders.length > 0 && (
-            <button
-              onClick={() => setShowStatusModal(true)}
-              className="px-3 py-1.5 text-xs font-bold bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border border-orange-300 dark:border-orange-800 rounded-lg flex items-center gap-1.5 shadow-xs animate-pulse"
-            >
-              <Clock size={13} />
-              <span>Track Orders ({activeOrders.length})</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {activeOrders.length > 0 && (
+              <button
+                onClick={() => setShowStatusModal(true)}
+                className="px-3 py-1.5 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
+              >
+                <Clock size={13} className="text-emerald-500" />
+                <span>Track ({activeOrders.length})</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
+
+      {/* Table Session Banner: Code aligned to total right */}
+      {menuData.is_host && menuData.session_code && (
+        <div className="bg-muted/40 border-b border-border px-4 py-2 text-xs">
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Users size={13} className="shrink-0" />
+              <span className="font-semibold text-foreground">Host</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground text-xs">Code:</span>
+              <span className="font-mono text-xs font-bold tracking-widest bg-card px-2 py-0.5 rounded border border-border text-foreground">
+                {menuData.session_code}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {menuData.is_joined && !menuData.is_host && (
+        <div className="bg-muted/40 border-b border-border px-4 py-2 text-xs">
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Check size={13} className="text-emerald-500 shrink-0" />
+              <span className="font-semibold text-foreground">Joined Table {menuData.table?.number}</span>
+            </div>
+            <span className="text-[11px] text-muted-foreground font-mono">Shared table cart</span>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-2xl mx-auto px-4 pt-4">
         {/* Search Bar & Veg Filter */}
@@ -468,7 +638,7 @@ function CustomerMenuContent() {
               placeholder="Search dishes, drinks..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2.5 bg-card border border-border rounded-xl text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-orange-500 shadow-2xs"
+              className="w-full pl-9 pr-8 py-2.5 bg-card border border-border rounded-xl text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-foreground/20 shadow-2xs"
             />
             {searchQuery && (
               <button
@@ -568,7 +738,7 @@ function CustomerMenuContent() {
                     )}
 
                     {hasAddons && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 dark:text-orange-400 mt-2 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded-md border border-orange-200 dark:border-orange-900/40">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground mt-2 bg-muted px-2 py-0.5 rounded-md border border-border">
                         <Sparkles size={10} /> Customisable
                       </span>
                     )}
@@ -577,21 +747,21 @@ function CustomerMenuContent() {
                   {/* Add / Quantity Button */}
                   <div className="shrink-0 flex flex-col items-center justify-center">
                     {cartItem && !hasAddons ? (
-                      <div className="flex items-center bg-orange-600 text-white rounded-xl shadow-xs overflow-hidden">
+                      <div className="flex items-center bg-foreground text-background rounded-lg shadow-xs overflow-hidden">
                         <button
                           type="button"
                           onClick={() => updateCartQuantity(cartItem.id, -1)}
-                          className="px-2.5 py-1.5 hover:bg-orange-700 active:bg-orange-800 transition-colors"
+                          className="px-2.5 py-1.5 hover:opacity-80 transition-opacity"
                         >
                           <Minus size={14} />
                         </button>
-                        <span className="px-2 text-xs font-black min-w-[20px] text-center">
+                        <span className="px-2 text-xs font-bold min-w-[20px] text-center">
                           {cartItem.quantity}
                         </span>
                         <button
                           type="button"
                           onClick={() => updateCartQuantity(cartItem.id, 1)}
-                          className="px-2.5 py-1.5 hover:bg-orange-700 active:bg-orange-800 transition-colors"
+                          className="px-2.5 py-1.5 hover:opacity-80 transition-opacity"
                         >
                           <Plus size={14} />
                         </button>
@@ -600,7 +770,7 @@ function CustomerMenuContent() {
                       <button
                         type="button"
                         onClick={() => handleOpenAdd(product)}
-                        className="px-4 py-1.5 bg-orange-50 dark:bg-orange-950/40 border border-orange-400 dark:border-orange-800 text-orange-600 dark:text-orange-400 rounded-xl font-bold text-xs shadow-2xs hover:bg-orange-600 hover:text-white transition-all flex items-center gap-1"
+                        className="px-4 py-1.5 bg-card hover:bg-foreground hover:text-background border border-border text-foreground rounded-lg font-bold text-xs shadow-2xs transition-all flex items-center gap-1"
                       >
                         <span>ADD</span>
                         {hasAddons && <Plus size={12} />}
@@ -619,15 +789,15 @@ function CustomerMenuContent() {
         <div className="fixed bottom-4 left-4 right-4 z-40 max-w-2xl mx-auto">
           <button
             onClick={() => setCartDrawerOpen(true)}
-            className="w-full bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white p-4 rounded-2xl shadow-xl flex items-center justify-between font-bold text-sm transition-all"
+            className="w-full bg-foreground text-background hover:opacity-95 p-3.5 rounded-xl shadow-lg flex items-center justify-between font-semibold text-sm transition-all"
           >
             <div className="flex items-center gap-2.5">
-              <span className="h-7 w-7 rounded-lg bg-white/20 flex items-center justify-center text-xs font-black">
+              <span className="h-6 w-6 rounded-md bg-background/20 text-background flex items-center justify-center text-xs font-bold">
                 {totalCartItemCount}
               </span>
               <span>View Cart &bull; {currencySymbol}{cartSubtotal.toFixed(2)}</span>
             </div>
-            <div className="flex items-center gap-1 text-xs uppercase tracking-wider font-extrabold">
+            <div className="flex items-center gap-1 text-xs uppercase tracking-wider font-bold">
               <span>Checkout</span>
               <ChevronRight size={16} />
             </div>
@@ -658,7 +828,7 @@ function CustomerMenuContent() {
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-bold text-xs text-foreground uppercase tracking-wider">{group.name}</span>
                     {group.is_required && (
-                      <span className="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] font-semibold bg-muted text-muted-foreground border border-border px-1.5 py-0.5 rounded">
                         Required
                       </span>
                     )}
@@ -690,7 +860,7 @@ function CustomerMenuContent() {
                                   });
                                 }
                               }}
-                              className="h-4 w-4 rounded text-orange-600 focus:ring-orange-500"
+                              className="h-4 w-4 rounded accent-foreground"
                             />
                             <span className="font-medium text-foreground">{addon.name}</span>
                           </div>
@@ -713,7 +883,7 @@ function CustomerMenuContent() {
                   placeholder="e.g. Less spicy, no onion..."
                   value={itemInstructions}
                   onChange={(e) => setItemInstructions(e.target.value)}
-                  className="w-full px-3 py-2 bg-muted/20 border border-border rounded-xl text-xs placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 bg-card border border-border rounded-xl text-xs placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-foreground/20"
                 />
               </div>
             </div>
@@ -722,7 +892,7 @@ function CustomerMenuContent() {
               <button
                 type="button"
                 onClick={handleAddCustomizedItem}
-                className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold text-sm shadow-md transition-colors"
+                className="w-full py-3 bg-foreground text-background hover:opacity-95 rounded-xl font-bold text-sm shadow-md transition-opacity"
               >
                 Add Item to Cart
               </button>
@@ -776,7 +946,7 @@ function CustomerMenuContent() {
                           </div>
                         )}
                         {item.special_instructions && (
-                          <p className="text-[11px] text-amber-600 dark:text-amber-400 italic mt-0.5">
+                          <p className="text-[11px] text-muted-foreground italic mt-0.5">
                             Note: {item.special_instructions}
                           </p>
                         )}
@@ -800,6 +970,14 @@ function CustomerMenuContent() {
                             <Plus size={12} />
                           </button>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => updateCartQuantity(item.id, -item.quantity)}
+                          className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                          title="Remove item"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                         <span className="font-black text-sm text-foreground min-w-[50px] text-right">
                           {currencySymbol}{itemTotal.toFixed(2)}
                         </span>
@@ -819,21 +997,21 @@ function CustomerMenuContent() {
                   placeholder="Your Name"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full px-3 py-2 bg-card border border-border rounded-lg text-xs placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 bg-card border border-border rounded-lg text-xs placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-foreground/20"
                 />
                 <input
                   type="tel"
                   placeholder="Your Phone Number"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
-                  className="w-full px-3 py-2 bg-card border border-border rounded-lg text-xs placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 bg-card border border-border rounded-lg text-xs placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-foreground/20"
                 />
                 <input
                   type="text"
                   placeholder="Overall Order Instructions..."
                   value={orderNotes}
                   onChange={(e) => setOrderNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-card border border-border rounded-lg text-xs placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 bg-card border border-border rounded-lg text-xs placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-foreground/20"
                 />
               </div>
 
@@ -853,28 +1031,43 @@ function CustomerMenuContent() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-orange-50 dark:bg-orange-950/30 p-2.5 rounded-lg border border-orange-200 dark:border-orange-900/40">
-                <Info size={14} className="text-orange-600 shrink-0" />
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-muted/40 p-2.5 rounded-lg border border-border">
+                <Info size={14} className="text-muted-foreground shrink-0" />
                 <span>Payment is settled at the counter or with your server after your meal.</span>
               </div>
             </div>
 
             <div className="p-4 border-t border-border bg-muted/20">
-              <button
-                type="button"
-                disabled={placingOrder}
-                onClick={handlePlaceOrder}
-                className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 disabled:opacity-50 text-white rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2"
-              >
-                {placingOrder ? (
-                  <>
-                    <RefreshCw className="animate-spin" size={16} />
-                    <span>Sending to Waiter...</span>
-                  </>
-                ) : (
-                  <span>Send Order to Waiter &bull; {currencySymbol}{cartSubtotal.toFixed(2)}</span>
-                )}
-              </button>
+              {menuData.is_host !== false ? (
+                <button
+                  type="button"
+                  disabled={placingOrder || cart.length === 0}
+                  onClick={handlePlaceOrder}
+                  className="w-full py-3.5 bg-foreground text-background hover:opacity-95 disabled:opacity-50 rounded-xl font-bold text-sm shadow-md transition-opacity flex items-center justify-center gap-2"
+                >
+                  {placingOrder ? (
+                    <>
+                      <RefreshCw className="animate-spin" size={16} />
+                      <span>Sending to Waiter...</span>
+                    </>
+                  ) : (
+                    <span>Send Order to Waiter &bull; {currencySymbol}{cartSubtotal.toFixed(2)}</span>
+                  )}
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full py-3.5 bg-muted text-muted-foreground rounded-xl font-bold text-xs cursor-not-allowed flex items-center justify-center gap-1.5 border border-border"
+                  >
+                    <span>Waiting for Host to Checkout</span>
+                  </button>
+                  <p className="text-[11px] text-muted-foreground text-center font-medium">
+                    Only the Host can place the order and checkout.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -886,7 +1079,7 @@ function CustomerMenuContent() {
           <div className="bg-card w-full max-w-md rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in">
             <div className="p-4 border-b border-border bg-muted/30 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <ChefHat className="text-orange-600" size={20} />
+                <ChefHat className="text-foreground" size={20} />
                 <h3 className="font-bold text-base text-foreground">Order Status Tracker</h3>
               </div>
               <button
@@ -920,21 +1113,21 @@ function CustomerMenuContent() {
 
                       {/* Status Badges */}
                       {isPending && (
-                        <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 p-2.5 rounded-lg border border-amber-200 dark:border-amber-900/40 text-xs font-semibold animate-pulse">
-                          <Clock size={16} className="shrink-0" />
-                          <span>Waiting for Waiter to accept your order...</span>
+                        <div className="flex items-center gap-2 bg-muted/50 text-foreground p-2.5 rounded-lg border border-border text-xs font-semibold animate-pulse">
+                          <Clock size={16} className="shrink-0 text-muted-foreground" />
+                          <span>Waiting for staff to accept your order...</span>
                         </div>
                       )}
 
                       {isApproved && (
-                        <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 p-2.5 rounded-lg border border-emerald-200 dark:border-emerald-900/40 text-xs font-semibold">
+                        <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 p-2.5 rounded-lg border border-emerald-500/20 text-xs font-semibold">
                           <Check size={16} className="shrink-0" />
                           <span>Order Accepted! Kitchen is preparing your food.</span>
                         </div>
                       )}
 
                       {isRejected && (
-                        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 p-2.5 rounded-lg border border-red-200 dark:border-red-900/40 text-xs font-semibold">
+                        <div className="flex items-center gap-2 bg-destructive/10 text-destructive p-2.5 rounded-lg border border-destructive/20 text-xs font-semibold">
                           <X size={16} className="shrink-0" />
                           <span>Order could not be accepted. Please talk to your server.</span>
                         </div>
@@ -961,11 +1154,55 @@ function CustomerMenuContent() {
               <button
                 type="button"
                 onClick={() => setShowStatusModal(false)}
-                className="w-full py-2.5 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-xl font-bold text-xs shadow transition-colors"
+                className="w-full py-2.5 bg-foreground text-background hover:opacity-90 rounded-xl font-bold text-xs shadow transition-opacity"
               >
                 Order More Items
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Join Table Code Modal */}
+      {showJoinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-card w-full max-w-sm rounded-2xl shadow-2xl p-5 border border-border">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 font-bold text-base text-foreground">
+                <Users size={18} className="text-foreground" />
+                <span>Join Table {menuData?.table?.number}</span>
+              </div>
+              <button
+                onClick={() => { setShowJoinModal(false); setJoinError(null); }}
+                className="p-1 rounded-lg text-muted-foreground hover:bg-muted"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+              Ask your friend at Table {menuData?.table?.number} for the 4-digit code shown at the top of their screen.
+            </p>
+            {joinError && (
+              <div className="p-2.5 mb-3 bg-destructive/10 text-destructive text-xs rounded-lg border border-destructive/20">
+                {joinError}
+              </div>
+            )}
+            <input
+              type="text"
+              maxLength={6}
+              placeholder="e.g. 4821"
+              value={joinCodeInput}
+              onChange={(e) => setJoinCodeInput(e.target.value.replace(/\D/g, ''))}
+              className="w-full text-center text-3xl font-mono tracking-widest font-black py-3 bg-muted/40 border border-border rounded-xl focus:ring-1 focus:ring-foreground/20 outline-hidden mb-4"
+              autoFocus
+            />
+            <button
+              onClick={() => handleJoinTable(joinCodeInput)}
+              disabled={joining || joinCodeInput.length < 4}
+              className="w-full py-3 bg-foreground text-background hover:opacity-95 disabled:opacity-50 rounded-xl font-bold text-sm shadow-md transition-opacity"
+            >
+              {joining ? 'Connecting to Table...' : 'Join Table Cart'}
+            </button>
           </div>
         </div>
       )}
@@ -977,9 +1214,9 @@ export default function CustomerMenuPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex flex-col items-center justify-center p-6 text-center">
-          <div className="h-10 w-10 rounded-full border-4 border-orange-500 border-t-transparent animate-spin mb-3" />
-          <p className="text-xs text-neutral-500 font-medium">Opening Menu...</p>
+        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+          <div className="h-10 w-10 rounded-full border-2 border-foreground border-t-transparent animate-spin mb-3" />
+          <p className="text-xs text-muted-foreground font-medium">Opening Menu...</p>
         </div>
       }
     >

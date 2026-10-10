@@ -133,6 +133,32 @@ export default function ProductsPage() {
   const isOwnerOrManager = tenantCan(currentTenant, 'catalog.manage');
   const productAddonGroupOptions = [...addonGroups, ...productInactiveAddonGroups];
   const categoryAddonGroupOptions = [...addonGroups, ...categoryAddonGroups];
+  const [togglingAvailabilityId, setTogglingAvailabilityId] = useState<string | number | null>(null);
+
+  const handleToggleProductAvailability = async (product: Product) => {
+    if (togglingAvailabilityId === product.id) return;
+    const targetActive = !product.is_active;
+    setTogglingAvailabilityId(product.id);
+    setProducts((prev) =>
+      prev.map((p) => (p.id === product.id ? { ...p, is_active: targetActive } : p))
+    );
+
+    try {
+      await api.patch(`/products/${product.id}/toggle-availability`);
+      toast.success(
+        targetActive
+          ? `${product.name} is now Available (In Stock)`
+          : `${product.name} is 86'd (Sold Out)`
+      );
+    } catch {
+      setProducts((prev) =>
+        prev.map((p) => (p.id === product.id ? { ...p, is_active: !targetActive } : p))
+      );
+      toast.error('Failed to update product availability');
+    } finally {
+      setTogglingAvailabilityId(null);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -704,11 +730,27 @@ export default function ProductsPage() {
                   )}
                 </td>
                 <td className="p-4 text-center">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    product.is_active ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'
-                  }`}>
-                    {product.is_active ? tCommon('active') : tCommon('inactive')}
-                  </span>
+                  {isOwnerOrManager ? (
+                    <button
+                      type="button"
+                      disabled={togglingAvailabilityId === product.id}
+                      onClick={() => handleToggleProductAvailability(product)}
+                      className={`px-2.5 py-1 text-xs font-mono font-bold uppercase rounded border transition-colors inline-flex items-center gap-1 ${
+                        product.is_active
+                          ? 'border-emerald-600 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800'
+                          : 'border-red-600 text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800'
+                      }`}
+                      title={product.is_active ? 'Click to 86 / Mark Sold Out' : 'Click to make Available'}
+                    >
+                      {product.is_active ? 'In Stock' : '86 / Sold Out'}
+                    </button>
+                  ) : (
+                    <span className={`px-2 py-0.5 rounded text-xs font-mono font-semibold ${
+                      product.is_active ? 'text-emerald-700 bg-emerald-50' : 'text-neutral-500 bg-muted'
+                    }`}>
+                      {product.is_active ? 'In Stock' : 'Sold Out'}
+                    </span>
+                  )}
                   {product.is_active && isCategoryInactive && (
                     <span className="text-[10px] text-amber-600 font-medium block mt-1">{t('hiddenOnPos')}</span>
                   )}
@@ -1333,31 +1375,53 @@ export default function ProductsPage() {
       )}
 
       {showCsvModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-lg">
-            <div className="flex justify-between items-center mb-5">
-              <h2 className="text-lg font-bold">
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowCsvModal(false);
+              setCsvFile(null);
+              setCsvResult(null);
+            }
+          }}
+        >
+          <div className="bg-card text-card-foreground rounded-2xl border border-border w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Pinned Modal Header */}
+            <div className="flex justify-between items-center px-6 py-4 border-b border-border shrink-0 bg-card">
+              <h2 className="text-lg font-bold text-foreground">
                 {t('csvModalTitle', { type: csvType === 'categories' ? t('tabCategories') : csvType === 'products' ? t('tabProducts') : t('tabAddonGroups') })}
               </h2>
-              <button onClick={() => setShowCsvModal(false)} className="text-gray-400 hover:text-muted-foreground">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCsvModal(false);
+                  setCsvFile(null);
+                  setCsvResult(null);
+                }}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted transition-colors"
+                aria-label="Close"
+              >
                 <X size={20} />
               </button>
             </div>
 
-            <div className="space-y-5">
+            {/* Scrollable Content Body */}
+            <div className="p-6 overflow-y-auto space-y-5 flex-1 min-h-0">
               {/* Download section */}
-              <div className="bg-muted rounded-xl p-4 space-y-3">
+              <div className="bg-muted/50 rounded-xl p-4 space-y-3 border border-border">
                 <p className="text-sm font-medium text-foreground">{t('download')}</p>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                   <button
+                    type="button"
                     onClick={() => downloadCsv(`/menu-csv/template/${csvType}`, `${csvType}-template.csv`)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm border border-border rounded-lg bg-card hover:bg-muted font-medium"
+                    className="flex items-center gap-2 px-4 py-2 text-sm border border-border rounded-lg bg-card hover:bg-muted font-medium transition-colors"
                   >
                     <Download size={14} /> {t('csvBlankTemplate')}
                   </button>
                   <button
+                    type="button"
                     onClick={() => downloadCsv(`/menu-csv/export/${csvType}`, `${csvType}-export.csv`)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm border border-border rounded-lg bg-card hover:bg-muted font-medium"
+                    className="flex items-center gap-2 px-4 py-2 text-sm border border-border rounded-lg bg-card hover:bg-muted font-medium transition-colors"
                   >
                     <Download size={14} /> {t('csvCurrentData')}
                   </button>
@@ -1376,9 +1440,9 @@ export default function ProductsPage() {
               {/* Upload section */}
               <div className="space-y-3">
                 <p className="text-sm font-medium text-foreground">{t('uploadCsv')}</p>
-                <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-border rounded-xl cursor-pointer hover:bg-muted transition-colors">
-                  <Upload size={20} className="text-gray-400 mb-1" />
-                  <span className="text-sm text-muted-foreground">
+                <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-border rounded-xl cursor-pointer hover:bg-muted/50 transition-colors">
+                  <Upload size={20} className="text-muted-foreground mb-1" />
+                  <span className="text-sm text-muted-foreground font-medium">
                     {csvFile ? csvFile.name : t('csvChooseFile')}
                   </span>
                   <input
@@ -1397,42 +1461,49 @@ export default function ProductsPage() {
 
               {/* Result */}
               {csvResult && (
-                <div className="rounded-xl border border-border overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border-b border-border">
-                    <CheckCircle size={15} className="text-green-600" />
-                    <span className="text-sm font-medium text-green-800">{t('importComplete')}</span>
+                <div className="rounded-xl border border-border overflow-hidden bg-card">
+                  <div className="flex items-center gap-2 px-4 py-3 bg-green-500/10 border-b border-border">
+                    <CheckCircle size={16} className="text-green-600 dark:text-green-400 shrink-0" />
+                    <span className="text-sm font-medium text-green-700 dark:text-green-400">{t('importComplete')}</span>
                   </div>
                   <div className="px-4 py-3 text-sm text-foreground space-y-1">
                     {csvType === 'addons' ? (
                       <>
-                        <p>{t('csvGroupsCreated')} <span className="font-medium">{String(csvResult.groups_created ?? 0)}</span></p>
-                        <p>{t('csvAddonsCreated')} <span className="font-medium">{String(csvResult.addons_created ?? 0)}</span></p>
+                        <p>{t('csvGroupsCreated')} <span className="font-semibold">{String(csvResult.groups_created ?? 0)}</span></p>
+                        <p>{t('csvAddonsCreated')} <span className="font-semibold">{String(csvResult.addons_created ?? 0)}</span></p>
                       </>
                     ) : (
-                      <p>{tCommon('created')} <span className="font-medium">{String(csvResult.created ?? 0)}</span></p>
+                      <>
+                        <p>{tCommon('created')} <span className="font-semibold">{String(csvResult.created ?? 0)}</span></p>
+                        {Number(csvResult.categories_created) > 0 && (
+                          <p className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                            Categories auto-created: {String(csvResult.categories_created)}
+                          </p>
+                        )}
+                      </>
                     )}
-                    <p>{tCommon('skipped')} <span className="font-medium">{String(csvResult.skipped ?? 0)}</span></p>
+                    <p>{tCommon('skipped')} <span className="font-semibold">{String(csvResult.skipped ?? 0)}</span></p>
                   </div>
                   {Array.isArray(csvResult.warnings) && (csvResult.warnings as string[]).length > 0 && (
-                    <div className="px-4 py-3 border-t border-border bg-amber-50">
+                    <div className="px-4 py-3 border-t border-border bg-amber-500/10">
                       <div className="flex items-center gap-2 mb-2">
-                        <AlertCircle size={14} className="text-amber-500" />
-                        <span className="text-xs font-medium text-amber-700">{t('csvMissingFields')}</span>
+                        <AlertCircle size={14} className="text-amber-500 shrink-0" />
+                        <span className="text-xs font-medium text-amber-700 dark:text-amber-400">{t('csvMissingFields')}</span>
                       </div>
-                      <ul className="space-y-1">
+                      <ul className="space-y-1 max-h-36 overflow-y-auto">
                         {(csvResult.warnings as string[]).map((w, i) => (
-                          <li key={i} className="text-xs text-amber-800">{w}</li>
+                          <li key={i} className="text-xs text-amber-800 dark:text-amber-300">{w}</li>
                         ))}
                       </ul>
                     </div>
                   )}
                   {Array.isArray(csvResult.errors) && (csvResult.errors as string[]).length > 0 && (
-                    <div className="px-4 py-3 border-t border-border">
+                    <div className="px-4 py-3 border-t border-border bg-destructive/5">
                       <div className="flex items-center gap-2 mb-2">
-                        <AlertCircle size={14} className="text-red-500" />
-                        <span className="text-xs font-medium text-red-700">{t('csvSkippedErrors')}</span>
+                        <AlertCircle size={14} className="text-destructive shrink-0" />
+                        <span className="text-xs font-medium text-destructive">{t('csvSkippedErrors')}</span>
                       </div>
-                      <ul className="space-y-1">
+                      <ul className="space-y-1 max-h-40 overflow-y-auto pe-1">
                         {(csvResult.errors as string[]).map((e, i) => (
                           <li key={i} className="text-xs text-muted-foreground">{e}</li>
                         ))}
@@ -1441,6 +1512,20 @@ export default function ProductsPage() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Pinned Modal Footer */}
+            <div className="flex justify-end gap-2 px-6 py-3 border-t border-border bg-muted/40 shrink-0">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCsvModal(false);
+                  setCsvFile(null);
+                  setCsvResult(null);
+                }}
+              >
+                {csvResult ? (tCommon('done') || 'Done') : tCommon('cancel')}
+              </Button>
             </div>
           </div>
         </div>

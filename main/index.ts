@@ -484,13 +484,13 @@ async function showRuntimeStuckDialog(reason: string): Promise<void> {
       `URL: ${lastWindowLoadFailure.validatedURL ?? `http://localhost:${getServerPort()}`}`,
     );
   }
-  detailLines.push(`Platform: ${process.platform} | Flo: ${app.getVersion()}`);
+  detailLines.push(`Platform: ${process.platform} | Restro Dash: ${app.getVersion()}`);
 
   const { response } = await dialog.showMessageBox({
     type: 'error',
-    title: 'Flo needs to restart',
-    message: 'Flo could not recover automatically. This usually means another program '
-      + '(antivirus, firewall, or a leftover Flo process) is blocking its local server.\n\n'
+    title: 'Restro Dash needs to restart',
+    message: 'Restro Dash could not recover automatically. This usually means another program '
+      + '(antivirus, firewall, or a leftover Restro Dash process) is blocking its local server.\n\n'
       + 'Please quit and reopen the app. If this keeps happening, sending a diagnostic '
       + 'report helps us fix it — it contains no order, customer, or business data.',
     detail: detailLines.join('\n'),
@@ -512,7 +512,7 @@ async function showRuntimeStuckDialog(reason: string): Promise<void> {
 
   await dialog.showMessageBox({
     type: sent ? 'info' : 'warning',
-    title: 'Flo',
+    title: 'Restro Dash',
     message: sent
       ? 'Diagnostic report sent. Thank you.'
       : 'Could not send the diagnostic report (diagnostics may be disabled in '
@@ -939,7 +939,7 @@ function createTray(): void {
         },
       ]);
 
-      tray.setToolTip('Flo Cafe');
+      tray.setToolTip('Restro Dash');
       tray.setContextMenu(linuxMenu);
       // Single-click also shows the window on Linux (no double-click standard).
       tray.on('click', () => {
@@ -965,12 +965,12 @@ function createTray(): void {
     tray = new Tray(icon.resize({ width: 16, height: 16 }));
 
     const contextMenu = Menu.buildFromTemplate([
-      { label: 'Open Flo', click: () => { showMainWindow(); } },
+      { label: 'Open Restro Dash', click: () => { showMainWindow(); } },
       { type: 'separator' },
       { label: 'Quit', click: () => { isQuitting = true; app.quit(); } },
     ]);
 
-    tray.setToolTip('Flo');
+    tray.setToolTip('Restro Dash');
     tray.setContextMenu(contextMenu);
     tray.on('double-click', () => { showMainWindow(); });
   } catch {
@@ -1121,7 +1121,7 @@ function createMenu(): void {
     {
       label: 'Window',
       submenu: [
-        { label: 'Flo Cafe', click: () => { if (showMainWindow()) mainWindow?.focus(); } },
+        { label: 'Restro Dash', click: () => { if (showMainWindow()) mainWindow?.focus(); } },
         { type: 'separator' },
         { role: 'minimize' },
         ...(process.platform === 'darwin' ? [
@@ -1134,7 +1134,7 @@ function createMenu(): void {
     {
       label: 'Help',
       submenu: [
-        ...(process.platform !== 'darwin' ? [{ label: 'About Flo', click: () => showAbout() }] : []),
+        ...(process.platform !== 'darwin' ? [{ label: 'About Restro Dash', click: () => showAbout() }] : []),
         ...(isStoreBuild
           ? []
           : [{ label: 'Check for Updates', click: () => checkForUpdates() }]),
@@ -1163,8 +1163,8 @@ function showAbout(): void {
   const serverAppPort = getServerAppPort();
   dialog.showMessageBox({
     type: 'info',
-    title: 'About Flo',
-    message: 'Flo Cafe',
+    title: 'About Restro Dash',
+    message: 'Restro Dash',
     detail: [
       `Version: ${app.getVersion()}`,
       `Electron: ${process.versions.electron}`,
@@ -1198,9 +1198,10 @@ async function initialize(): Promise<void> {
     await startServer();
     if (isShutdownRequested()) return;
 
-    cloudSync.start();
-    telemetry.start();
-    googleDrive.start();
+    // Cloud sync and telemetry disabled for RestroDash lean mode
+    // cloudSync.start();
+    // telemetry.start();
+    // googleDrive.start();
 
     console.log('[Flo] Starting KDS server on port 3002...');
     await startKdsServer();
@@ -1210,12 +1211,11 @@ async function initialize(): Promise<void> {
     await startServerApp();
     if (isShutdownRequested()) return;
 
-    // Native E2E owns an offline fixture; optional LAN discovery must not
-    // contend with a developer session or keep the test process alive.
-    if (process.env.FLO_E2E_SKIP_OPTIONAL_NETWORK !== '1') {
-      console.log('[Flo] Starting mDNS advertisement...');
-      startMdns();
-    }
+    // LAN mDNS advertisement disabled
+    // if (process.env.FLO_E2E_SKIP_OPTIONAL_NETWORK !== '1') {
+    //   console.log('[Flo] Starting mDNS advertisement...');
+    //   startMdns();
+    // }
 
     console.log('[Flo] Initializing printer...');
     await initPrinter();
@@ -1355,7 +1355,7 @@ async function initialize(): Promise<void> {
       }
       return;
     }
-    dialog.showErrorBox('Initialization Error', `Failed to start Flo: ${error}`);
+    dialog.showErrorBox('Initialization Error', `Failed to start Restro Dash: ${error}`);
 
     // Report fatal startup error to telemetry on a best-effort basis.
     try {

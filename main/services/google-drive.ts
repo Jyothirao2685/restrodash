@@ -32,7 +32,7 @@ type OAuth2Client = InstanceType<typeof googleAuth.OAuth2>;
 type DriveClient = ReturnType<typeof drive>;
 
 export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
-export const DRIVE_BACKUP_FOLDER_NAME = 'FloCafe Backups';
+export const DRIVE_BACKUP_FOLDER_NAME = 'Restro Dash Backups';
 export const DRIVE_RESTORE_CONFIRMATION = 'RESTORE GOOGLE DRIVE BACKUP';
 export const DRIVE_WARNING_SETTING = 'google_drive_warning_acknowledged';
 
@@ -2188,7 +2188,7 @@ class GoogleDriveService {
         const error = requestUrl.searchParams.get('error');
         const stateMatches = returnedState.length === state.length && crypto.timingSafeEqual(Buffer.from(returnedState), Buffer.from(state));
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(error || !code || !stateMatches ? '<html><body>Google Drive connection failed. Close this window and return to FloCafe.</body></html>' : '<html><body>Google Drive connected. Close this window and return to FloCafe.</body></html>');
+        res.end(error || !code || !stateMatches ? '<html><body>Google Drive connection failed. Close this window and return to Restro Dash.</body></html>' : '<html><body>Google Drive connected. Close this window and return to Restro Dash.</body></html>');
         if (error) return finish(() => reject(createDriveError('reauth_required')));
         if (!code || !stateMatches) return finish(() => reject(createDriveError('reauth_required')));
         finish(() => resolve({ code, redirectUri, verifier: pkce.verifier }));

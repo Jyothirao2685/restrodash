@@ -52,6 +52,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   if (req.method === 'GET' && /^\/api\/support-ticket\/pre-login\/[0-9a-f-]{36}\/status$/i.test(reqPath)) { next(); return; }
   // Public QR customer menu & dine-in ordering routes (rate-limited and session-keyed)
   if (reqPath.startsWith('/api/public/')) { next(); return; }
+  // Server App, KDS, & POS discovery routes
+  if (reqPath === '/api/server-app/info' || reqPath === '/api/server-app-info' || reqPath === '/api/kds-info' || reqPath === '/api/pos-info') { next(); return; }
 
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
@@ -150,6 +152,7 @@ export function startServer(): Promise<void> {
   return new Promise((resolve, reject) => {
     startReject = reject;
     app = express();
+    app.set('trust proxy', 1);
 
     app.use(cors(corsOptions));
     // Scope the anonymous pre-login route to a body limit far below the
@@ -201,7 +204,7 @@ export function startServer(): Promise<void> {
       res.status(db.ok ? 200 : 503).json({
         status: db.ok ? 'ok' : 'error',
         db: db.ok ? 'ok' : db.error,
-        service: 'Flo Local API',
+        service: 'Restro Dash API',
         version: process.env.npm_package_version || '2.4.7',
         timestamp: new Date().toISOString(),
       });
@@ -244,7 +247,7 @@ export function startServer(): Promise<void> {
       app.get('/', (_req: Request, res: Response) => {
         res.send(`
           <html><body style="font-family:sans-serif;padding:2rem">
-            <h2>Flo – Frontend not built</h2>
+            <h2>Restro Dash – Frontend not built</h2>
             <p>Run <code>npm run build:frontend</code> then restart the app.</p>
           </body></html>
         `);
@@ -301,52 +304,20 @@ export function startServer(): Promise<void> {
         setServerPort(boundPort);
         console.log(`[Server] HTTP server running on http://localhost:${boundPort}`);
 
-        if (listeningServer) {
-          // Manual upgrade handler allows checking runtime KDS enablement dynamically per connection.
-          const websocketServer = new WebSocketServer({ noServer: true });
-          wss = websocketServer;
-          setupKdsWebSocket(websocketServer);
+        // KDS WebSocket listener disabled for RestroDash lean mode
+        // if (listeningServer) {
+        //   const websocketServer = new WebSocketServer({ noServer: true });
+        //   wss = websocketServer;
+        //   setupKdsWebSocket(websocketServer);
+        //   ...
+        // }
 
-          listeningServer.on('upgrade', (request, socket, head) => {
-            const pathname = (request.url || '').split('?')[0];
-            if (pathname !== '/kds') {
-              socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
-              socket.destroy();
-              return;
-            }
-
-            if (isDatabaseMaintenanceActive()) {
-              socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
-              socket.destroy();
-              return;
-            }
-
-            if (!isKdsEnabled()) {
-              // Return 404 when disabled to avoid revealing KDS presence to LAN clients.
-              socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
-              socket.destroy();
-              return;
-            }
-
-            try {
-              websocketServer.handleUpgrade(request, socket, head, (ws) => {
-                websocketServer.emit('connection', ws, request);
-              });
-            } catch (error) {
-              console.error('[Server] KDS WebSocket upgrade failed:', error);
-              socket.destroy();
-            }
-          });
-
-          console.log(`[Server] KDS WebSocket running on ws://localhost:${boundPort}/kds`);
-        }
-
-        // This is the single startup owner for WhatsApp in every server mode.
-        try {
-          initWhatsAppFromDb();
-        } catch (error) {
-          console.error('[Server] WhatsApp startup initialization failed:', error);
-        }
+        // WhatsApp auto-init disabled for lightweight RestroDash integration mode
+        // try {
+        //   initWhatsAppFromDb();
+        // } catch (error) {
+        //   console.error('[Server] WhatsApp startup initialization failed:', error);
+        // }
 
         resolve();
       };
