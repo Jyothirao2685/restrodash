@@ -52,6 +52,26 @@ interface PublicOrderItemInput {
   addons?: { id: string; quantity?: number }[];
 }
 
+// In-memory blacklist for recently released/checked-out sessions (prevents instant re-occupying on refresh)
+const sessionBlacklist = new Map<string, number>();
+
+export function blacklistSessionKey(sessionKey: string | null | undefined, durationSeconds = 90): void {
+  if (!sessionKey || typeof sessionKey !== 'string') return;
+  const expiresAt = Date.now() + durationSeconds * 1000;
+  sessionBlacklist.set(sessionKey, expiresAt);
+}
+
+export function isSessionBlacklisted(sessionKey: string | null | undefined): boolean {
+  if (!sessionKey || typeof sessionKey !== 'string') return false;
+  const expiresAt = sessionBlacklist.get(sessionKey);
+  if (!expiresAt) return false;
+  if (Date.now() > expiresAt) {
+    sessionBlacklist.delete(sessionKey);
+    return false;
+  }
+  return true;
+}
+
 /**
  * GET /api/public/table/:qrToken
  * Fetches restaurant branding, table info, menu categories, products,
@@ -79,6 +99,22 @@ router.get('/table/:qrToken', publicMenuRateLimit, (req: Request, res: Response)
     const deviceSessionKey = (req.headers['x-device-session-key'] as string) || null;
     const providedCode = (req.headers['x-table-session-code'] as string) || (req.query.code as string) || null;
 
+    // If this device's session was ended/released, do not auto-reoccupy the table
+    if (deviceSessionKey && isSessionBlacklisted(deviceSessionKey)) {
+      const storeName = getSettingValue('store_name') || getSettingValue('restaurant_name') || 'RestroDash';
+      return res.json({
+        session_ended: true,
+        message: 'Thanks for dining with us! Your session has ended.',
+        restaurant: {
+          name: storeName,
+          address: getSettingValue('address') || '',
+          phone: getSettingValue('phone') || '',
+          currency: getTenantCurrency(),
+        },
+        table_number: table.number,
+      });
+    }
+
     // Check for active orders for this table
     const activeOrders = db.prepare(`
       SELECT id, order_number, status, approval_status, subtotal, tax_amount, total,
@@ -102,7 +138,7 @@ router.get('/table/:qrToken', publicMenuRateLimit, (req: Request, res: Response)
     const shouldStartNewSession = !table.active_session_key || (!hasActiveOrders && (table.status === 'available' || elapsedMinutes >= 15));
 
     if (shouldStartNewSession) {
-      if (deviceSessionKey) {
+      if (deviceSessionKey && !isSessionBlacklisted(deviceSessionKey)) {
         const currentTime = now();
         sessionCode = String(Math.floor(1000 + Math.random() * 9000));
         db.prepare(`

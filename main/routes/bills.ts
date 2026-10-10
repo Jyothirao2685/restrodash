@@ -18,6 +18,7 @@ import { asyncHandler } from '../middleware/async-handler';
 import { notifyKdsUpdate, notifyOrderUpdated } from '../services/kds';
 import { printReceipt } from '../services/receipt';
 import { cloudSync } from '../services/cloud-sync';
+import { blacklistSessionKey } from './public-menu';
 import { hasPermission, requirePermission } from '../services/authorization';
 import { ROLE_ACCESS, hasRole } from '../../shared/role-permissions';
 import { getOpenSession, isCashTender, NO_CASH_SESSION_ID, requireOpenSessionForCashTender } from '../services/shift-session-gate';
@@ -2103,11 +2104,20 @@ function applyPaymentBatch(
     const orderFullyPaid = !unpaidSibling;
     if (orderFullyPaid) {
       // Payment must not resurrect terminal orders (VALID_TRANSITIONS.cancelled = []).
-      const order = db.prepare('SELECT status, table_id FROM orders WHERE id = ?').get(bill.order_id) as any;
+      const order = db.prepare('SELECT status, table_id, qr_device_session_key FROM orders WHERE id = ?').get(bill.order_id) as any;
       const canComplete = order && !['cancelled', 'completed'].includes(order.status);
       if (canComplete) {
         db.prepare("UPDATE orders SET status = 'completed', completed_at = ?, updated_at = ? WHERE id = ?").run(changedAt, changedAt, bill.order_id);
-        if (order.table_id) db.prepare("UPDATE tables SET status = 'available', active_session_key = NULL, updated_at = ? WHERE id = ?").run(changedAt, order.table_id);
+        if (order.table_id) {
+          const tbl = db.prepare('SELECT active_session_key FROM tables WHERE id = ?').get(order.table_id) as any;
+          if (tbl?.active_session_key) {
+            blacklistSessionKey(tbl.active_session_key, 90);
+          }
+          if (order.qr_device_session_key) {
+            blacklistSessionKey(order.qr_device_session_key, 90);
+          }
+          db.prepare("UPDATE tables SET status = 'available', active_session_key = NULL, qr_session_started_at = NULL, updated_at = ? WHERE id = ?").run(changedAt, order.table_id);
+        }
       }
     }
     const cashback = calculateCashback(db, bill, effectiveCustomerId);

@@ -84,6 +84,8 @@ interface ActiveOrder {
 }
 
 interface MenuResponse {
+  session_ended?: boolean;
+  message?: string;
   locked: boolean;
   is_host?: boolean;
   is_joined?: boolean;
@@ -515,7 +517,47 @@ function CustomerMenuContent() {
     );
   }
 
-  // 3. Occupied Table Screen (when table is active with a host and device has not joined)
+  // 3. Thanks for Dining / Session Ended Screen (when table has been released or bill checked out)
+  if (menuData.session_ended) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-full max-w-sm bg-card border border-border rounded-2xl p-8 shadow-sm space-y-5">
+          <div className="h-16 w-16 mx-auto rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <Check size={32} className="stroke-[2.5]" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-foreground">
+              Thanks for Dining with Us!
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+              We hope you had a wonderful meal at <strong>{menuData.restaurant?.name || 'our restaurant'}</strong>.
+            </p>
+          </div>
+
+          <div className="py-2.5 px-4 bg-muted/50 border border-border/60 rounded-xl text-xs text-muted-foreground font-mono">
+            Table {menuData.table_number || menuData.table?.number} • Session Completed
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('restro_customer_device_session_key');
+                  window.location.reload();
+                }
+              }}
+              className="w-full py-3 bg-foreground text-background hover:opacity-90 rounded-xl font-bold text-xs shadow transition-opacity flex items-center justify-center gap-2"
+            >
+              <RefreshCw size={14} />
+              <span>Start New Dining Session</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. Occupied Table Screen (when table is active with a host and device has not joined)
   if (!menuData.is_host && !menuData.is_joined) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">

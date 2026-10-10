@@ -4,6 +4,7 @@ import { randomUUID, randomBytes } from 'crypto';
 import { hasPermission, requirePermission } from '../services/authorization';
 import { notifyKdsUpdate } from '../services/kds';
 import { cloudSync } from '../services/cloud-sync';
+import { blacklistSessionKey } from './public-menu';
 import QRCode from 'qrcode';
 import os from 'os';
 
@@ -696,6 +697,9 @@ router.patch('/:id/status', requirePermission('tables.manage'), (req: Request, r
       db.prepare('UPDATE tables SET status = ?, reservation_customer_id = ?, updated_at = ? WHERE id = ?')
         .run(status, normalizedReservationCustomerId, now(), req.params.id);
     } else if (status === 'available') {
+      if ((table as any).active_session_key) {
+        blacklistSessionKey((table as any).active_session_key, 90);
+      }
       db.prepare('UPDATE tables SET status = ?, active_session_key = NULL, qr_session_started_at = NULL, updated_at = ? WHERE id = ?')
         .run(status, now(), req.params.id);
     } else {
@@ -717,6 +721,10 @@ router.post('/:id/release-qr-session', requirePermission('tables.view'), (req: R
     const table = db.prepare('SELECT * FROM tables WHERE id = ?').get(req.params.id) as any;
     if (!table) {
       return res.status(404).json({ error: 'Table not found' });
+    }
+
+    if (table.active_session_key) {
+      blacklistSessionKey(table.active_session_key, 90);
     }
 
     withTxn(() => {
