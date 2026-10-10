@@ -181,23 +181,27 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
+  const isRunning = activeProcesses.has(tenant.subdomain);
   ensureTenantRunning(tenant);
 
-  // Wait up to 3.5s for the tenant server to be listening
-  const isReady = await waitForPort(tenant.ports.api, 3500);
+  if (!isRunning) {
+    req.pause();
+    const isReady = await waitForPort(tenant.ports.api, 4000);
+    req.resume();
 
-  if (!isReady) {
-    res.writeHead(502, { 'Content-Type': 'text/html' });
-    return res.end(`
-      <html>
-        <head><title>Starting Restaurant Instance...</title></head>
-        <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:60px 20px;text-align:center;background:#ffffff;color:#181d26;">
-          <h2 style="font-weight:600;font-size:20px;margin-bottom:8px;">Restaurant Instance Initializing...</h2>
-          <p style="color:#64748b;font-size:14px;margin-bottom:20px;">The dedicated POS engine for <strong>${tenant.subdomain}</strong> is starting up. Refreshing automatically in 3 seconds...</p>
-          <script>setTimeout(function(){ window.location.reload(); }, 3000);</script>
-        </body>
-      </html>
-    `);
+    if (!isReady) {
+      res.writeHead(502, { 'Content-Type': 'text/html' });
+      return res.end(`
+        <html>
+          <head><title>Starting Restaurant Instance...</title></head>
+          <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:60px 20px;text-align:center;background:#ffffff;color:#181d26;">
+            <h2 style="font-weight:600;font-size:20px;margin-bottom:8px;">Restaurant Instance Initializing...</h2>
+            <p style="color:#64748b;font-size:14px;margin-bottom:20px;">The dedicated POS engine for <strong>${tenant.subdomain}</strong> is starting up. Refreshing automatically in 3 seconds...</p>
+            <script>setTimeout(function(){ window.location.reload(); }, 3000);</script>
+          </body>
+        </html>
+      `);
+    }
   }
 
   proxy.web(req, res, { target: `http://127.0.0.1:${tenant.ports.api}` });
