@@ -106,8 +106,8 @@ if (qrTokens.size !== 12) {
 }
 
 const firstTable = tables[0];
-console.log(`  ✓ 12 tables created (${tables[0].name} to ${tables[11].name})`);
-console.log(`  ✓ Sample Table QR Token: ${firstTable.name} -> ${firstTable.qr_token}`);
+console.log(`  ✓ 12 tables created (${tables[0].number} to ${tables[11].number})`);
+console.log(`  ✓ Sample Table QR Token: ${firstTable.number} -> ${firstTable.qr_token}`);
 
 // Verify Settings
 const businessName = db.prepare("SELECT value FROM settings WHERE key = 'business_name'").get().value;
