@@ -3,13 +3,16 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function OnboardingPage() {
+function OnboardingContent() {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const searchParams = useSearchParams();
+  const planParam = searchParams.get('plan');
 
-  // Form State
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+
+  // Form State (NO PRE-FILLS)
   const [subdomain, setSubdomain] = useState('');
   const [restaurantName, setRestaurantName] = useState('');
   const [serviceModel, setServiceModel] = useState<'finedine' | 'qsr'>('finedine');
@@ -17,25 +20,22 @@ export default function OnboardingPage() {
   const [ownerName, setOwnerName] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
   const [ownerPassword, setOwnerPassword] = useState('');
-  const [masterPin, setMasterPin] = useState('1234');
-  const [approvalPin, setApprovalPin] = useState('1234');
+  const [masterPin, setMasterPin] = useState(''); // NO PRE-FILL
+  const [approvalPin, setApprovalPin] = useState(''); // NO PRE-FILL
 
   const [tableCount, setTableCount] = useState(12);
   const [currency, setCurrency] = useState('INR');
   const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [taxPercentage, setTaxPercentage] = useState(5.0);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>(
+    planParam === 'annual' ? 'annual' : 'monthly'
+  );
 
   // Validation & Live Status
   const [subdomainChecking, setSubdomainChecking] = useState(false);
   const [subdomainAvailable, setSubdomainAvailable] = useState<boolean | null>(null);
   const [subdomainError, setSubdomainError] = useState<string | null>(null);
-
-  // Provisioning state
-  const [provisioningStatus, setProvisioningStatus] = useState<string>('Initializing...');
-  const [provisionedData, setProvisionedData] = useState<any | null>(null);
-  const [provisionError, setProvisionError] = useState<string | null>(null);
 
   // Live subdomain availability check debounce
   useEffect(() => {
@@ -56,7 +56,7 @@ export default function OnboardingPage() {
         const data = await res.json();
         setSubdomainAvailable(data.available);
         setSubdomainError(data.available ? null : (data.reason || 'Subdomain unavailable'));
-      } catch (err) {
+      } catch {
         setSubdomainAvailable(null);
       } finally {
         setSubdomainChecking(false);
@@ -66,102 +66,76 @@ export default function OnboardingPage() {
     return () => clearTimeout(timer);
   }, [subdomain]);
 
-  const handleStartProvisioning = async () => {
-    setStep(5);
-    setProvisioningStatus('Allocating dedicated VPS directory & ports...');
-    setProvisionError(null);
+  const handleProceedToCheckout = () => {
+    const onboardingData = {
+      subdomain: subdomain.trim().toLowerCase(),
+      restaurantName: restaurantName.trim(),
+      serviceModel,
+      ownerName: ownerName.trim(),
+      ownerEmail: ownerEmail.trim().toLowerCase(),
+      ownerPassword,
+      masterPin,
+      approvalPin,
+      tableCount,
+      currency,
+      currencySymbol,
+      timezone,
+      taxPercentage,
+      billingCycle,
+    };
 
-    try {
-      await new Promise((r) => setTimeout(r, 600));
-      setProvisioningStatus('Bootstrapping isolated restro.db (Schema v101)...');
-
-      await new Promise((r) => setTimeout(r, 600));
-      setProvisioningStatus('Generating table matrix & unique QR tokens...');
-
-      const res = await fetch('/api/onboarding/provision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subdomain: subdomain.trim().toLowerCase(),
-          restaurantName: restaurantName.trim(),
-          ownerName: ownerName.trim(),
-          ownerEmail: ownerEmail.trim().toLowerCase(),
-          ownerPassword: ownerPassword,
-          masterPin,
-          approvalPin,
-          tableCount,
-          currency,
-          currencySymbol,
-          timezone,
-          taxPercentage,
-          plan: billingCycle === 'monthly' ? 'monthly_35k' : 'annual',
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to provision instance.');
-      }
-
-      setProvisioningStatus('Instance Ready! Initializing root session...');
-      setProvisionedData(data);
-    } catch (err: any) {
-      console.error(err);
-      setProvisionError(err.message || 'An error occurred during provisioning.');
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('restrodash_onboarding_data', JSON.stringify(onboardingData));
     }
+
+    router.push('/checkout');
   };
 
   return (
-    <div className="min-h-screen bg-[#ffffff] text-[#333840] flex flex-col justify-between">
-      {/* Top Header */}
-      <header className="border-b border-[#dddddd] bg-[#ffffff] sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div className="min-h-screen bg-[#FBFAF7] text-[#181818] flex flex-col justify-between selection:bg-[#181818] selection:text-[#FBFAF7]">
+      {/* Top Header matching landing page */}
+      <header className="border-b border-[#E6E1D6] bg-[#FBFAF7] sticky top-0 z-40 h-[72px]">
+        <div className="max-w-[1200px] mx-auto px-6 h-full flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-[8px] bg-[#181d26] flex items-center justify-center p-1.5">
+            <div className="h-[28px] flex items-center">
               <Image
                 src="/restro-logo.png"
-                alt="RestroDash Logo"
-                width={24}
-                height={24}
-                className="w-full h-full object-contain"
+                alt="RestroDash"
+                width={112}
+                height={28}
+                priority
+                className="h-[28px] w-auto object-contain filter brightness-0"
               />
             </div>
-            <span className="font-medium text-[#181d26] text-[16px] tracking-tight">
-              RestroDash
-            </span>
           </Link>
 
           {/* Step Progress Tracker */}
-          <div className="hidden sm:flex items-center gap-2 text-[13px] text-[#41454d]">
-            <span className={step >= 1 ? 'font-medium text-[#181d26]' : ''}>1. Subdomain</span>
-            <span>→</span>
-            <span className={step >= 2 ? 'font-medium text-[#181d26]' : ''}>2. Owner</span>
-            <span>→</span>
-            <span className={step >= 3 ? 'font-medium text-[#181d26]' : ''}>3. Dining Floor</span>
-            <span>→</span>
-            <span className={step >= 4 ? 'font-medium text-[#181d26]' : ''}>4. Activation</span>
+          <div className="hidden sm:flex items-center gap-3 text-[14px] text-[#5A564D]">
+            <span className={step >= 1 ? 'font-medium text-[#181818]' : ''}>1. Subdomain</span>
+            <span className="opacity-40">→</span>
+            <span className={step >= 2 ? 'font-medium text-[#181818]' : ''}>2. Owner & PIN</span>
+            <span className="opacity-40">→</span>
+            <span className={step >= 3 ? 'font-medium text-[#181818]' : ''}>3. Floor Setup</span>
+            <span className="opacity-40">→</span>
+            <span className="opacity-60">4. Checkout</span>
           </div>
 
-          <Link href="/" className="text-[13px] text-[#41454d] hover:text-[#181d26]">
+          <Link href="/" className="text-[14px] text-[#5A564D] hover:text-[#181818] transition-colors">
             Exit
           </Link>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="max-w-2xl mx-auto px-6 py-12 w-full flex-1 flex flex-col justify-center">
+      <main className="max-w-2xl mx-auto px-6 py-12 sm:py-16 w-full flex-1 flex flex-col justify-center">
         {/* Step 1: Brand & Subdomain */}
         {step === 1 && (
-          <div>
-            <span className="text-[12px] uppercase tracking-wider font-semibold text-[#181d26]/70 mb-2 block">
-              Step 1 of 4 • Restaurant Identity
-            </span>
-            <h1 className="text-[28px] sm:text-[32px] font-normal text-[#181d26] leading-tight mb-3">
-              Reserve your restaurant domain & profile.
+          <div className="bg-[#FFFFFF] rounded-[24px] border border-[#E6E1D6] p-8 sm:p-12 shadow-xs">
+            <h1 className="text-[30px] sm:text-[34px] font-normal text-[#181818] leading-[1.2] tracking-[-0.02em] mb-3">
+              Reserve your restaurant domain & profile
             </h1>
-            <p className="text-[15px] text-[#333840] mb-8 leading-relaxed">
-              Every restaurant receives an isolated VPS instance and a dedicated subdomain with zero-lag routing.
+            <p className="text-[16px] text-[#5A564D] mb-8 leading-[1.6]">
+              Every restaurant receives an isolated cloud instance and a dedicated subdomain with zero-lag local sync.
             </p>
 
             <form
@@ -174,7 +148,7 @@ export default function OnboardingPage() {
               className="space-y-6"
             >
               <div>
-                <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                   Restaurant Brand Name
                 </label>
                 <input
@@ -188,15 +162,15 @@ export default function OnboardingPage() {
                       setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''));
                     }
                   }}
-                  className="w-full border border-[#dddddd] rounded-[8px] px-3.5 py-3 text-[14px] text-[#181d26] placeholder-[#9297a0] focus:outline-hidden focus:border-[#181d26]"
+                  className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[15px] text-[#181818] bg-[#FFFFFF] placeholder-[#8A857B] focus:outline-hidden focus:border-[#181818]"
                 />
               </div>
 
               <div>
-                <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                   Desired Subdomain
                 </label>
-                <div className="flex items-center border border-[#dddddd] rounded-[8px] px-3.5 py-3 bg-[#ffffff] focus-within:border-[#181d26]">
+                <div className="flex items-center border border-[#8A857B] rounded-[12px] px-4 py-3 bg-[#FFFFFF] focus-within:border-[#181818]">
                   <input
                     type="text"
                     required
@@ -205,63 +179,67 @@ export default function OnboardingPage() {
                     onChange={(e) => {
                       setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''));
                     }}
-                    className="w-full text-[14px] text-[#181d26] placeholder-[#9297a0] focus:outline-hidden font-mono"
+                    className="w-full text-[15px] text-[#181818] placeholder-[#8A857B] focus:outline-hidden"
                   />
-                  <span className="text-[13px] text-[#41454d] font-mono ml-2 select-none">
+                  <span className="text-[14px] text-[#5A564D] ml-2 select-none">
                     .restrodash.in
                   </span>
                 </div>
 
                 {/* Inline availability feedback */}
-                <div className="mt-2 text-[12px]">
+                <div className="mt-2 text-[13px]">
                   {subdomainChecking && (
-                    <span className="text-[#41454d]">Checking availability...</span>
+                    <span className="text-[#5A564D]">Checking availability...</span>
                   )}
                   {!subdomainChecking && subdomainAvailable === true && (
-                    <span className="text-[#006400] font-medium">✓ Subdomain is available!</span>
+                    <span className="text-[#1F7A4D] font-medium">✓ Subdomain is available!</span>
                   )}
                   {!subdomainChecking && subdomainAvailable === false && (
-                    <span className="text-[#aa2d00] font-medium">{subdomainError}</span>
+                    <span className="text-[#B3261E] font-medium">{subdomainError}</span>
                   )}
                 </div>
               </div>
 
               <div>
-                <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                   Service Model
                 </label>
                 <div className="grid grid-cols-2 gap-3">
-                  <div
+                  <button
+                    type="button"
                     onClick={() => setServiceModel('finedine')}
-                    className={`border rounded-[8px] p-3.5 cursor-pointer text-left transition-all ${
+                    aria-pressed={serviceModel === 'finedine'}
+                    className={`border rounded-[12px] p-4 cursor-pointer text-left transition-all ${
                       serviceModel === 'finedine'
-                        ? 'border-[#181d26] bg-[#f8fafc]'
-                        : 'border-[#dddddd] bg-[#ffffff] hover:border-[#9297a0]'
+                        ? 'border-[#181818] bg-[#F4F1EA]'
+                        : 'border-[#E6E1D6] bg-[#FFFFFF] hover:border-[#8A857B]'
                     }`}
                   >
-                    <div className="text-[14px] font-medium text-[#181d26]">Dine-In & Bar</div>
-                    <div className="text-[12px] text-[#41454d] mt-0.5">Table seating, QR dining, KDS</div>
-                  </div>
+                    <div className="text-[15px] font-medium text-[#181818]">Dine-In & Bar</div>
+                    <div className="text-[13px] text-[#5A564D] mt-0.5">Table seating, QR dining, KDS</div>
+                  </button>
 
-                  <div
+                  <button
+                    type="button"
                     onClick={() => setServiceModel('qsr')}
-                    className={`border rounded-[8px] p-3.5 cursor-pointer text-left transition-all ${
+                    aria-pressed={serviceModel === 'qsr'}
+                    className={`border rounded-[12px] p-4 cursor-pointer text-left transition-all ${
                       serviceModel === 'qsr'
-                        ? 'border-[#181d26] bg-[#f8fafc]'
-                        : 'border-[#dddddd] bg-[#ffffff] hover:border-[#9297a0]'
+                        ? 'border-[#181818] bg-[#F4F1EA]'
+                        : 'border-[#E6E1D6] bg-[#FFFFFF] hover:border-[#8A857B]'
                     }`}
                   >
-                    <div className="text-[14px] font-medium text-[#181d26]">QSR / Counter</div>
-                    <div className="text-[12px] text-[#41454d] mt-0.5">Fast counter checkout & KOT</div>
-                  </div>
+                    <div className="text-[15px] font-medium text-[#181818]">QSR / Counter</div>
+                    <div className="text-[13px] text-[#5A564D] mt-0.5">Fast counter checkout & KOT</div>
+                  </button>
                 </div>
               </div>
 
-              <div className="pt-4">
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={!subdomainAvailable || !restaurantName.trim()}
-                  className="btn-primary w-full py-3.5 text-[15px] disabled:opacity-40"
+                  className="btn-ink w-full py-3.5 text-[15px] disabled:opacity-40"
                 >
                   Continue to Owner Account →
                 </button>
@@ -270,30 +248,27 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Step 2: Owner Credentials & Security */}
+        {/* Step 2: Owner Credentials & Starred Security PINs (NO PRE-FILLS) */}
         {step === 2 && (
-          <div>
-            <span className="text-[12px] uppercase tracking-wider font-semibold text-[#181d26]/70 mb-2 block">
-              Step 2 of 4 • Admin Account
-            </span>
-            <h1 className="text-[28px] sm:text-[32px] font-normal text-[#181d26] leading-tight mb-3">
-              Set up your root owner credentials.
+          <div className="bg-[#FFFFFF] rounded-[24px] border border-[#E6E1D6] p-8 sm:p-12 shadow-xs">
+            <h1 className="text-[30px] sm:text-[34px] font-normal text-[#181818] leading-[1.2] tracking-[-0.02em] mb-3">
+              Set up owner credentials and security PINs
             </h1>
-            <p className="text-[15px] text-[#333840] mb-8 leading-relaxed">
-              These credentials grant full administrative access to your POS counter, reports, and staff management.
+            <p className="text-[16px] text-[#5A564D] mb-8 leading-[1.6]">
+              These credentials grant administrative access to your counter terminals, reports, and staff authorization.
             </p>
 
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (ownerName && ownerEmail && ownerPassword.length >= 6) {
+                if (ownerName && ownerEmail && ownerPassword.length >= 6 && masterPin.length === 4 && approvalPin.length >= 4) {
                   setStep(3);
                 }
               }}
               className="space-y-5"
             >
               <div>
-                <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                   Owner Full Name
                 </label>
                 <input
@@ -302,26 +277,26 @@ export default function OnboardingPage() {
                   placeholder="e.g. Rohit Sharma"
                   value={ownerName}
                   onChange={(e) => setOwnerName(e.target.value)}
-                  className="w-full border border-[#dddddd] rounded-[8px] px-3.5 py-3 text-[14px] text-[#181d26] focus:outline-hidden focus:border-[#181d26]"
+                  className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[15px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                 />
               </div>
 
               <div>
-                <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                   Owner Email
                 </label>
                 <input
                   type="email"
                   required
-                  placeholder="owner@olivebistro.com"
+                  placeholder="owner@restaurant.com"
                   value={ownerEmail}
                   onChange={(e) => setOwnerEmail(e.target.value)}
-                  className="w-full border border-[#dddddd] rounded-[8px] px-3.5 py-3 text-[14px] text-[#181d26] focus:outline-hidden focus:border-[#181d26]"
+                  className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[15px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                 />
               </div>
 
               <div>
-                <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                   Admin Password
                 </label>
                 <input
@@ -331,43 +306,46 @@ export default function OnboardingPage() {
                   placeholder="At least 6 characters"
                   value={ownerPassword}
                   onChange={(e) => setOwnerPassword(e.target.value)}
-                  className="w-full border border-[#dddddd] rounded-[8px] px-3.5 py-3 text-[14px] text-[#181d26] focus:outline-hidden focus:border-[#181d26]"
+                  className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[15px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                 />
               </div>
 
+              {/* Starred Security PINs (NO PRE-FILLS, type="password") */}
               <div className="grid grid-cols-2 gap-4 pt-2">
                 <div>
-                  <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                  <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                     Hardware Master PIN
                   </label>
                   <input
-                    type="text"
+                    type="password"
+                    inputMode="numeric"
                     required
                     maxLength={4}
-                    placeholder="1234"
+                    placeholder="••••"
                     value={masterPin}
                     onChange={(e) => setMasterPin(e.target.value.replace(/[^0-9]/g, ''))}
-                    className="w-full border border-[#dddddd] rounded-[8px] px-3.5 py-2.5 text-[14px] font-mono text-center text-[#181d26] focus:outline-hidden focus:border-[#181d26]"
+                    className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[16px] text-center tracking-widest text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                   />
-                  <span className="text-[11px] text-[#41454d] block mt-1">
+                  <span className="text-[12px] text-[#5A564D] block mt-1">
                     4 digits for POS terminal lock
                   </span>
                 </div>
 
                 <div>
-                  <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                  <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                     Manager Approval PIN
                   </label>
                   <input
-                    type="text"
+                    type="password"
+                    inputMode="numeric"
                     required
                     maxLength={6}
-                    placeholder="1234"
+                    placeholder="••••"
                     value={approvalPin}
                     onChange={(e) => setApprovalPin(e.target.value.replace(/[^0-9]/g, ''))}
-                    className="w-full border border-[#dddddd] rounded-[8px] px-3.5 py-2.5 text-[14px] font-mono text-center text-[#181d26] focus:outline-hidden focus:border-[#181d26]"
+                    className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[16px] text-center tracking-widest text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                   />
-                  <span className="text-[11px] text-[#41454d] block mt-1">
+                  <span className="text-[12px] text-[#5A564D] block mt-1">
                     4-6 digits for voids & discounts
                   </span>
                 </div>
@@ -377,13 +355,14 @@ export default function OnboardingPage() {
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="btn-secondary py-3 px-5 text-[14px]"
+                  className="btn-ink bg-[#FFFFFF] text-[#181818] border-[#8A857B] hover:bg-[#F4F1EA] py-3 px-6 text-[14px]"
                 >
                   ← Back
                 </button>
                 <button
                   type="submit"
-                  className="btn-primary flex-1 py-3 text-[15px]"
+                  disabled={!ownerName || !ownerEmail || ownerPassword.length < 6 || masterPin.length !== 4 || approvalPin.length < 4}
+                  className="btn-ink flex-1 py-3 text-[15px] disabled:opacity-40"
                 >
                   Continue to Dining Floor →
                 </button>
@@ -392,28 +371,25 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Step 3: Floor Setup & Tax */}
+        {/* Step 3: Floor Setup & Configuration */}
         {step === 3 && (
-          <div>
-            <span className="text-[12px] uppercase tracking-wider font-semibold text-[#181d26]/70 mb-2 block">
-              Step 3 of 4 • Dining Room & Regional Settings
-            </span>
-            <h1 className="text-[28px] sm:text-[32px] font-normal text-[#181d26] leading-tight mb-3">
-              Configure tables and currency.
+          <div className="bg-[#FFFFFF] rounded-[24px] border border-[#E6E1D6] p-8 sm:p-12 shadow-xs">
+            <h1 className="text-[30px] sm:text-[34px] font-normal text-[#181818] leading-[1.2] tracking-[-0.02em] mb-3">
+              Configure tables and currency
             </h1>
-            <p className="text-[15px] text-[#333840] mb-8 leading-relaxed">
-              We will automatically seed your table matrix with cryptographically secure QR ordering codes.
+            <p className="text-[16px] text-[#5A564D] mb-8 leading-[1.6]">
+              We will automatically seed your table matrix with secure QR ordering tokens.
             </p>
 
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                setStep(4);
+                handleProceedToCheckout();
               }}
               className="space-y-6"
             >
               <div>
-                <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                   Number of Dining Tables
                 </label>
                 <div className="grid grid-cols-4 gap-2">
@@ -422,10 +398,10 @@ export default function OnboardingPage() {
                       type="button"
                       key={count}
                       onClick={() => setTableCount(count)}
-                      className={`py-2.5 rounded-[8px] text-[14px] font-medium border transition-colors ${
+                      className={`py-2.5 rounded-[10px] text-[14px] font-medium border transition-colors ${
                         tableCount === count
-                          ? 'border-[#181d26] bg-[#181d26] text-[#ffffff]'
-                          : 'border-[#dddddd] bg-[#ffffff] text-[#333840] hover:border-[#9297a0]'
+                          ? 'border-[#181818] bg-[#181818] text-[#FFFFFF]'
+                          : 'border-[#E6E1D6] bg-[#FFFFFF] text-[#181818] hover:border-[#8A857B]'
                       }`}
                     >
                       {count} Tables
@@ -433,21 +409,21 @@ export default function OnboardingPage() {
                   ))}
                 </div>
                 <div className="mt-3 flex items-center gap-3">
-                  <span className="text-[13px] text-[#41454d]">Or enter custom:</span>
+                  <span className="text-[13px] text-[#5A564D]">Or custom count:</span>
                   <input
                     type="number"
                     min={1}
                     max={200}
                     value={tableCount}
                     onChange={(e) => setTableCount(parseInt(e.target.value) || 10)}
-                    className="w-24 border border-[#dddddd] rounded-[6px] px-2.5 py-1 text-[13px] text-center font-medium text-[#181d26] focus:outline-hidden focus:border-[#181d26]"
+                    className="w-24 border border-[#8A857B] rounded-[8px] px-3 py-1.5 text-[14px] text-center font-medium text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                  <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                     Currency
                   </label>
                   <select
@@ -460,7 +436,7 @@ export default function OnboardingPage() {
                       if (e.target.value === 'AED') setCurrencySymbol('AED');
                       if (e.target.value === 'GBP') setCurrencySymbol('£');
                     }}
-                    className="w-full border border-[#dddddd] rounded-[8px] px-3 py-2.5 text-[14px] text-[#181d26] bg-[#ffffff] focus:outline-hidden focus:border-[#181d26]"
+                    className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[14px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                   >
                     <option value="INR">INR (₹ Indian Rupee)</option>
                     <option value="USD">USD ($ US Dollar)</option>
@@ -471,13 +447,13 @@ export default function OnboardingPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                  <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                     Store Timezone
                   </label>
                   <select
                     value={timezone}
                     onChange={(e) => setTimezone(e.target.value)}
-                    className="w-full border border-[#dddddd] rounded-[8px] px-3 py-2.5 text-[14px] text-[#181d26] bg-[#ffffff] focus:outline-hidden focus:border-[#181d26]"
+                    className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[14px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                   >
                     <option value="Asia/Kolkata">Asia/Kolkata (IST +5:30)</option>
                     <option value="Asia/Dubai">Asia/Dubai (GST +4:00)</option>
@@ -490,7 +466,7 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <label className="block text-[13px] font-medium text-[#181d26] mb-1.5">
+                <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                   Default GST / Tax Rate (%)
                 </label>
                 <input
@@ -500,7 +476,7 @@ export default function OnboardingPage() {
                   max="100"
                   value={taxPercentage}
                   onChange={(e) => setTaxPercentage(parseFloat(e.target.value) || 0)}
-                  className="w-full border border-[#dddddd] rounded-[8px] px-3.5 py-2.5 text-[14px] text-[#181d26] focus:outline-hidden focus:border-[#181d26]"
+                  className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[14px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                 />
               </div>
 
@@ -508,193 +484,42 @@ export default function OnboardingPage() {
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="btn-secondary py-3 px-5 text-[14px]"
+                  className="btn-ink bg-[#FFFFFF] text-[#181818] border-[#8A857B] hover:bg-[#F4F1EA] py-3 px-6 text-[14px]"
                 >
                   ← Back
                 </button>
                 <button
                   type="submit"
-                  className="btn-primary flex-1 py-3 text-[15px]"
+                  className="btn-ink flex-1 py-3 text-[15px]"
                 >
-                  Continue to Plan & Launch →
+                  Proceed to Checkout & Coupon →
                 </button>
               </div>
             </form>
           </div>
         )}
-
-        {/* Step 4: Plan Confirmation & Payment */}
-        {step === 4 && (
-          <div>
-            <span className="text-[12px] uppercase tracking-wider font-semibold text-[#181d26]/70 mb-2 block">
-              Step 4 of 4 • Activation
-            </span>
-            <h1 className="text-[28px] sm:text-[32px] font-normal text-[#181d26] leading-tight mb-3">
-              Confirm your dedicated restaurant instance.
-            </h1>
-            <p className="text-[15px] text-[#333840] mb-8 leading-relaxed">
-              One flat subscription. Unlimited terminals, unlimited QR scans, full KDS, and your own dedicated cloud instance.
-            </p>
-
-            <div className="border border-[#dddddd] rounded-[12px] bg-[#f8fafc] p-6 mb-8">
-              <div className="flex items-center justify-between pb-4 border-b border-[#dddddd] mb-4">
-                <div>
-                  <div className="text-[18px] font-medium text-[#181d26]">
-                    RestroDash Dedicated Tier
-                  </div>
-                  <div className="text-[13px] text-[#41454d]">
-                    Instance: <strong className="text-[#181d26]">{subdomain}.restrodash.in</strong>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[28px] font-medium text-[#181d26] leading-none">
-                    ₹35,000
-                  </div>
-                  <span className="text-[12px] text-[#41454d]">/ month flat</span>
-                </div>
-              </div>
-
-              <div className="space-y-2 text-[13px] text-[#333840]">
-                <div className="flex items-center gap-2">
-                  <span className="text-[#006400] font-medium">✓</span>
-                  <span>Dedicated isolated SQLite database (<code>restro.db</code>)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[#006400] font-medium">✓</span>
-                  <span>{tableCount} tables pre-seeded with Host-Peer QR tokens</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[#006400] font-medium">✓</span>
-                  <span>Multi-station Kitchen Display Screen (KDS)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[#006400] font-medium">✓</span>
-                  <span>Raw ESC/POS thermal printing with golden column alignment</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[#006400] font-medium">✓</span>
-                  <span>0% commission on orders & unlimited staff accounts</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                className="btn-secondary py-3 px-5 text-[14px]"
-              >
-                ← Back
-              </button>
-              <button
-                type="button"
-                onClick={handleStartProvisioning}
-                className="btn-primary flex-1 py-3.5 text-[15px] font-medium text-center justify-center"
-              >
-                Deploy Restaurant Instance Now
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 5: Provisioning & Instant Launch */}
-        {step === 5 && (
-          <div className="text-center py-6">
-            {!provisionedData && !provisionError && (
-              <div>
-                <div className="w-12 h-12 border-3 border-[#181d26] border-t-transparent rounded-full animate-spin mx-auto mb-6" />
-                <h2 className="text-[24px] font-normal text-[#181d26] mb-2">
-                  Provisioning Your Instance...
-                </h2>
-                <p className="text-[14px] text-[#41454d] font-mono mb-4">
-                  {provisioningStatus}
-                </p>
-                <div className="text-[12px] text-[#9297a0]">
-                  Target: {subdomain}.restrodash.in • SQLite WAL Engine
-                </div>
-              </div>
-            )}
-
-            {provisionError && (
-              <div className="bg-[#fff1f0] border border-[#ffccc7] rounded-[12px] p-6 text-left">
-                <h3 className="text-[18px] font-medium text-[#aa2d00] mb-2">
-                  Provisioning Encountered an Error
-                </h3>
-                <p className="text-[14px] text-[#333840] mb-4">
-                  {provisionError}
-                </p>
-                <button
-                  onClick={() => setStep(4)}
-                  className="btn-secondary text-[13px] py-2 px-4"
-                >
-                  ← Go Back and Retry
-                </button>
-              </div>
-            )}
-
-            {provisionedData && (
-              <div className="border border-[#dddddd] rounded-[16px] p-8 bg-[#f8fafc] text-left">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-[#006400] text-white flex items-center justify-center text-[16px]">
-                    ✓
-                  </div>
-                  <div>
-                    <h2 className="text-[22px] font-normal text-[#181d26] leading-none">
-                      Instance Provisioned Successfully!
-                    </h2>
-                    <span className="text-[13px] text-[#41454d]">
-                      Your dedicated restaurant node is live.
-                    </span>
-                  </div>
-                </div>
-
-                <div className="border border-[#dddddd] rounded-[8px] bg-white p-4 space-y-2 text-[13px] mb-6">
-                  <div className="flex justify-between">
-                    <span className="text-[#41454d]">Subdomain:</span>
-                    <strong className="text-[#181d26] font-mono">{provisionedData.subdomain}.restrodash.in</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#41454d]">Owner Email:</span>
-                    <strong className="text-[#181d26]">{provisionedData.owner.email}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#41454d]">Assigned Ports:</span>
-                    <strong className="text-[#181d26] font-mono">
-                      API: :{provisionedData.ports.api} • KDS: :{provisionedData.ports.kds} • QR: :{provisionedData.ports.serverApp}
-                    </strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#41454d]">Database File:</span>
-                    <strong className="text-[#181d26] font-mono text-[11px] truncate max-w-xs">{provisionedData.dbPath}</strong>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <a
-                    href={`https://${provisionedData.subdomain}.restrodash.in/dashboard`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn-primary w-full text-center justify-center py-3.5 text-[15px]"
-                  >
-                    Open Live POS Dashboard ↗
-                  </a>
-                  <Link
-                    href="/"
-                    className="btn-secondary w-full text-center justify-center py-2.5 text-[14px]"
-                  >
-                    Return to Homepage
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-[#dddddd] py-6 text-center text-[12px] text-[#41454d]">
-        RestroDash Dedicated Restaurant Cloud • 100% Tenant Isolation • SQLite Powered
+      {/* Footer Minimal */}
+      <footer className="border-t border-[#E6E1D6] py-6 px-6 text-center text-[13px] text-[#5A564D]">
+        <div className="max-w-[1200px] mx-auto">
+          © {new Date().getFullYear()} RestroDash Technologies Inc. • Authoritative Offline-First POS Engine
+        </div>
       </footer>
     </div>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-[#FBFAF7] flex items-center justify-center text-[15px] text-[#5A564D]">
+          Loading onboarding...
+        </div>
+      }
+    >
+      <OnboardingContent />
+    </React.Suspense>
   );
 }

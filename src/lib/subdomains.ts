@@ -95,9 +95,9 @@ export function checkSubdomainAvailability(rawSubdomain: string, instancesDir?: 
 
   // Check if an instance directory or registry already exists for this subdomain
   const targetDir = instancesDir || path.join(process.cwd(), 'instances');
-  const instancePath = path.join(targetDir, subdomain);
+  const instancePath = path.join(/*turbopackIgnore: true*/ targetDir, subdomain);
 
-  if (fs.existsSync(instancePath)) {
+  if (fs.existsSync(/*turbopackIgnore: true*/ instancePath)) {
     return {
       valid: true,
       available: false,

@@ -35,3 +35,7 @@ next-env.d.ts
 
 # instances runtime
 /instances/
+
+# next.js agent rules auto-gen
+AGENTS.md
+CLAUDE.md

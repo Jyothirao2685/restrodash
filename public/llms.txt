@@ -1,0 +1,29 @@
+# RestroDash
+
+> The offline-first restaurant operating system and POS engine for high-volume dining.
+
+RestroDash provides local-authoritative SQLite table ordering, host-peer collaborative QR dining, multi-station kitchen display systems (KDS), and ESC/POS thermal printing with zero cloud latency and guaranteed LAN continuity.
+
+## Core Capabilities
+
+- **Offline-First SQLite WAL Engine:** Tableside billing, inventory deductions, and split checks commit locally in sub-millisecond transactions on Port 3001 without cloud WAN dependencies.
+- **Host-Peer Collaborative QR Dining:** Diners scan table QR codes where the first scanner is designated as the Table Host (Master). Companions join via a secure 4-digit session PIN to propose items into a synchronized real-time cart. Only the Host holds checkout and bill settlement authority, preventing accidental or rogue orders.
+- **Multi-Station Kitchen Display System (KDS):** Standalone KDS server runs on Port 3002. Orders route automatically by kitchen prep station (Grill, Saute, Bar, Bakery) with touch bump stages and zero external latency.
+- **ESC/POS Thermal Printing:** Native ESC/POS driver supporting 58mm and 80mm printers over USB, Ethernet/LAN, and Serial, tested against golden column alignment oracles for receipts and kitchen KOTs.
+- **Dedicated VPS Cloud Isolation:** Each restaurant brand receives an isolated VPS instance and custom subdomain (`subdomain.restrodash.in`) with automated encrypted daily cloud backups and zero per-order commissions.
+
+## Commercial Pricing
+
+- **Monthly Subscription:** ₹35,000 / month flat rate.
+- **Annual Subscription:** ₹29,166 / month (billed annually, 17% savings).
+- **Per-Order Commission:** 0%.
+- **Terminals & Devices:** Unlimited POS counters, unlimited KDS displays, unlimited QR table scans.
+
+## Key Links & Documentation
+
+- Homepage & Architecture: https://restrodash.in
+- Instant Onboarding & Instance Deployment: https://restrodash.in/onboarding
+- Host-Peer QR Dining Overview: https://restrodash.in#qr-dining
+- Multi-Station KDS Overview: https://restrodash.in#kds
+- Transparent Commercial Pricing: https://restrodash.in#pricing
+- Frequently Asked Questions: https://restrodash.in#faq

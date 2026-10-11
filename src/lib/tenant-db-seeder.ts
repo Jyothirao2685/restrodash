@@ -873,8 +873,8 @@ export function provisionTenantInstance(
 
   // 1. Create instance workspace directory
   const baseDir = instancesBaseDir || path.join(process.cwd(), 'instances');
-  const workspacePath = path.join(baseDir, subdomain);
-  if (!fs.existsSync(workspacePath)) {
+  const workspacePath = path.join(/*turbopackIgnore: true*/ baseDir, subdomain);
+  if (!fs.existsSync(/*turbopackIgnore: true*/ workspacePath)) {
     fs.mkdirSync(workspacePath, { recursive: true });
   }
 

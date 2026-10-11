@@ -33,7 +33,7 @@ function getRegistryFilePath(instancesDir: string): string {
  */
 export function loadRegistry(instancesDir?: string): InstanceRegistry {
   const targetDir = instancesDir || path.join(process.cwd(), 'instances');
-  if (!fs.existsSync(targetDir)) {
+  if (!fs.existsSync(/*turbopackIgnore: true*/ targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
 
@@ -63,7 +63,7 @@ export function loadRegistry(instancesDir?: string): InstanceRegistry {
  */
 export function saveRegistry(registry: InstanceRegistry, instancesDir?: string): void {
   const targetDir = instancesDir || path.join(process.cwd(), 'instances');
-  if (!fs.existsSync(targetDir)) {
+  if (!fs.existsSync(/*turbopackIgnore: true*/ targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
   const registryFile = getRegistryFilePath(targetDir);

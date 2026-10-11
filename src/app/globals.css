@@ -2,32 +2,20 @@
 
 @layer base {
   :root {
-    /* Airtable Design System Tokens */
-    --color-primary: #181d26;
-    --color-primary-active: #0d1218;
-    --color-canvas: #ffffff;
-    --color-surface-soft: #f8fafc;
-    --color-surface-strong: #e0e2e6;
-    --color-surface-dark: #181d26;
-    --color-surface-dark-elevated: #1d1f25;
-    --color-hairline: #dddddd;
-
-    --color-ink: #181d26;
-    --color-body: #333840;
-    --color-muted: #41454d;
-    --color-border-strong: #9297a0;
-    --color-on-primary: #ffffff;
-    --color-link: #1b61c9;
-    --color-link-active: #1a3866;
-
-    /* Signature Card Surfaces */
-    --color-signature-coral: #aa2d00;
-    --color-signature-forest: #0a2e0e;
-    --color-signature-cream: #f5e9d4;
-    --color-signature-peach: #fcab79;
-    --color-signature-mint: #a8d8c4;
-    --color-signature-yellow: #f4d35e;
-    --color-signature-mustard: #d9a441;
+    --color-ink: #181818;
+    --color-footer-ink: #121212;
+    --color-dark-card: #222222;
+    --color-paper: #FBFAF7;
+    --color-paper-alt: #F4F1EA;
+    --color-white: #FFFFFF;
+    --color-muted-light: #5A564D;
+    --color-muted-dark: #B5B0A6;
+    --color-amber: #E5A823;
+    --color-amber-hover: #EDB93F;
+    --color-error: #B3261E;
+    --color-success: #1F7A4D;
+    --color-field-border: #8A857B;
+    --color-card-border: #E6E1D6;
   }
 }
 
@@ -37,103 +25,120 @@ html {
 }
 
 body {
-  background-color: var(--color-canvas);
-  color: var(--color-body);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-manrope), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Typography rules per DESIGN.md */
+::selection {
+  background-color: #181818;
+  color: #FBFAF7;
+}
+
 h1, h2, h3, h4, h5, h6 {
-  color: var(--color-ink);
-  font-weight: 400;
-  letter-spacing: -0.01em;
+  color: inherit;
+  font-weight: 500;
+  letter-spacing: -0.02em;
 }
 
-/* Standard Airtable Button System */
-.btn-primary {
-  background-color: var(--color-primary);
-  color: var(--color-on-primary);
-  font-size: 16px;
+/* Primary Button on Dark Band: White with #222222 Text */
+.btn-white {
+  background-color: #FFFFFF;
+  color: #222222;
+  font-size: 15px;
   font-weight: 500;
   line-height: 1.4;
-  padding: 14px 24px;
+  padding: 13px 26px;
   border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  border: 1px solid transparent;
   cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  border: 1px solid #FFFFFF;
 }
 
-.btn-primary:active {
-  background-color: var(--color-primary-active);
+.btn-white:hover {
+  background-color: #F4F1EA;
 }
 
-.btn-secondary {
-  background-color: var(--color-canvas);
-  color: var(--color-ink);
-  font-size: 16px;
+.btn-amber {
+  background-color: #E5A823;
+  color: #181818;
+  font-size: 15px;
   font-weight: 500;
   line-height: 1.4;
-  padding: 14px 24px;
+  padding: 13px 26px;
   border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  border: 1px solid var(--color-hairline);
   cursor: pointer;
-}
-
-.btn-secondary:active {
-  background-color: #f1f3f5;
-}
-
-.btn-secondary-on-dark {
-  background-color: #ffffff;
-  color: #181d26;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.4;
-  padding: 14px 24px;
-  border-radius: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
+  transition: background-color 0.2s ease, transform 0.1s ease;
   border: none;
-  cursor: pointer;
 }
 
-.btn-pricing-pill {
-  background-color: var(--color-primary);
-  color: #ffffff;
+.btn-amber:hover {
+  background-color: #EDB93F;
+}
+
+/* Primary Button on Light Band: Ink with White Text */
+.btn-ink {
+  background-color: #181818;
+  color: #FFFFFF;
   font-size: 15px;
   font-weight: 500;
-  padding: 12px 24px;
-  border-radius: 9999px;
+  line-height: 1.4;
+  padding: 13px 26px;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
   cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+  border: 1px solid #181818;
 }
 
-.btn-pricing-pill-secondary {
+.btn-ink:hover {
+  opacity: 0.9;
+}
+
+/* Outline / Secondary Button */
+.btn-outline-dark {
   background-color: transparent;
-  color: var(--color-ink);
+  color: #FFFFFF;
   font-size: 15px;
-  font-weight: 500;
-  padding: 12px 24px;
-  border-radius: 9999px;
-  border: 1px solid var(--color-hairline);
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 13px 26px;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.25);
   cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.btn-outline-dark:hover {
+  border-color: #FFFFFF;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Background QR-dot subtle pattern */
+.bg-qr-dots {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1.5px, transparent 1.5px);
+  background-size: 24px 24px;
+}
+
+/* Demo Form Shadow (the one shadow permitted) */
+.shadow-demo-card {
+  box-shadow: 0 24px 60px rgba(24, 24, 24, 0.12);
 }

@@ -1,0 +1,26 @@
+{
+  "name": "RestroDash Restaurant POS",
+  "short_name": "RestroDash",
+  "description": "The Offline-First POS & Operating System for Restaurants",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#181d26",
+  "icons": [
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/restro-logo.png",
+      "sizes": "1722x604",
+      "type": "image/png"
+    }
+  ]
+}

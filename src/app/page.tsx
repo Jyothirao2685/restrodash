@@ -1,59 +1,42 @@
-'use client';
-
 import React from 'react';
-import { useRouter } from 'next/navigation';
-import { Navbar } from '@/components/Navbar';
+import { Header } from '@/components/Header';
 import { Hero } from '@/components/Hero';
-import { SignatureCoralBand } from '@/components/SignatureCoralBand';
-import { DemoGridSection } from '@/components/DemoGridSection';
-import { CreamCalloutBand } from '@/components/CreamCalloutBand';
-import { SignatureForestBand } from '@/components/SignatureForestBand';
+import { ModulesSection } from '@/components/ModulesSection';
+import { OrderStepsSection } from '@/components/OrderStepsSection';
+import { BentoSection } from '@/components/BentoSection';
 import { PricingSection } from '@/components/PricingSection';
-import { DarkCtaBand } from '@/components/DarkCtaBand';
-import { LightCtaBanner } from '@/components/LightCtaBanner';
-import { FAQSection } from '@/components/FAQSection';
+import { FaqSection } from '@/components/FaqSection';
+import { DemoSection } from '@/components/DemoSection';
 import { Footer } from '@/components/Footer';
 
 export default function LandingPage() {
-  const router = useRouter();
-
-  const handleNavigateOnboarding = () => {
-    router.push('/onboarding');
-  };
-
   return (
-    <div className="min-h-screen bg-[#ffffff] text-[#333840] selection:bg-[#181d26] selection:text-[#ffffff]">
-      {/* 1. Sticky Navigation Bar */}
-      <Navbar onOpenGetStarted={handleNavigateOnboarding} />
+    <div className="min-h-screen bg-[#FBFAF7] text-[#181818] selection:bg-[#181818] selection:text-[#FBFAF7]">
+      {/* Block 0: Header (Ink background, sticky) */}
+      <Header />
 
-      {/* 2. Hero Section (White Canvas + High-Density POS Interface) */}
-      <Hero onOpenGetStarted={handleNavigateOnboarding} />
+      {/* Block 1: Hero (Ink background, rounded base, 4 staggered photos) */}
+      <Hero />
 
-      {/* 3. Signature Coral Band (#aa2d00) - Offline Engine & WAL Speed */}
-      <SignatureCoralBand onOpenGetStarted={handleNavigateOnboarding} />
+      {/* Block 2: Modules (Paper background, 6 cards with 4:3 photos) */}
+      <ModulesSection />
 
-      {/* 4. Demo Grid Section (Pastel surfaces: Peach, Mint, Yellow, Mustard) */}
-      <DemoGridSection />
+      {/* Block 3: How an order moves (Ink background, interactive 4-step tabs + 3:2 photos) */}
+      <OrderStepsSection />
 
-      {/* 5. Cream Callout Band (#f5e9d4) - Host-Peer 4-Digit PIN Collaborative QR Arc */}
-      <CreamCalloutBand />
+      {/* Block 4: Built for service hours (Paper alt background, 4-card diagonal bento) */}
+      <BentoSection />
 
-      {/* 6. Signature Forest Band (#0a2e0e) - Multi-Station KDS & Thermal Print Autonomy */}
-      <SignatureForestBand onOpenGetStarted={handleNavigateOnboarding} />
+      {/* Pricing Section (Paper background, dedicated flat rate manifest) */}
+      <PricingSection />
 
-      {/* 7. Commercial Precision Pricing Section (Inter Display dialect + Pill buttons) */}
-      <PricingSection onOpenGetStarted={handleNavigateOnboarding} />
+      {/* Block 5: Questions (Paper background, 8 native details disclosure rows) */}
+      <FaqSection />
 
-      {/* 8. Dark Navy CTA Card (#181d26) */}
-      <DarkCtaBand onOpenGetStarted={handleNavigateOnboarding} />
+      {/* Block 6: Get Started / Consultation (Paper alt card overlapping the footer) */}
+      <DemoSection />
 
-      {/* 9. Light Gray CTA Banner (#e0e2e6) */}
-      <LightCtaBanner onOpenGetStarted={handleNavigateOnboarding} />
-
-      {/* 10. FAQ Accordion */}
-      <FAQSection />
-
-      {/* 11. Structured Editorial Footer */}
+      {/* Block 7: Footer (Footer ink background, 4px amber rule, legal row) */}
       <Footer />
     </div>
   );

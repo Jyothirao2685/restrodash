@@ -1,90 +1,89 @@
-'use client';
-
 import React from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
+import { copy } from '@/content/copy';
 
 export function Footer() {
   return (
-    <footer className="bg-[#ffffff] pt-16 pb-12">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-8 pb-12 border-b border-[#dddddd]">
-          {/* Brand Col */}
-          <div className="col-span-2">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 rounded-[8px] bg-[#181d26] flex items-center justify-center p-1.5">
-                <Image 
-                  src="/restro-logo.png" 
-                  alt="RestroDash Logo" 
-                  width={24} 
-                  height={24} 
-                  className="w-full h-full object-contain"
+    <footer className="relative bg-[#121212] text-[#FFFFFF] pt-44 pb-12 overflow-hidden">
+      {/* Faint QR-dot pattern in footer at 4% white */}
+      <div
+        className="absolute inset-0 bg-qr-dots opacity-40 pointer-events-none"
+        aria-hidden="true"
+      />
+
+      <div className="relative max-w-[1200px] mx-auto px-6">
+        {/* Row 1: Logo, Contact info, Navigation links */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-10 pb-12 items-start">
+          {/* Logo & Description (cols 1 to 5) */}
+          <div className="md:col-span-5">
+            <Link href="/" className="inline-block mb-4">
+              <div className="h-[28px] flex items-center">
+                <Image
+                  src="/restro-logo.png"
+                  alt="RestroDash"
+                  width={112}
+                  height={28}
+                  className="h-[28px] w-auto object-contain filter brightness-0 invert"
                 />
               </div>
-              <span className="font-medium text-[#181d26] text-[16px]">
-                RestroDash
-              </span>
-            </div>
-            <p className="text-[13px] text-[#41454d] max-w-sm leading-relaxed mb-4">
-              The high-performance, offline-first restaurant POS and dining operating system. Local SQLite execution with dedicated cloud tenant isolation.
+            </Link>
+            <p className="text-[14px] leading-[1.6] text-[#B5B0A6] max-w-sm">
+              {copy.footer.description}
             </p>
-            <div className="text-[12px] text-[#006400] flex items-center gap-2 font-medium">
-              <span className="w-2 h-2 rounded-full bg-[#006400]" />
-              <span>All Systems Operational • Standalone Engine</span>
+          </div>
+
+          {/* Contact Details (cols 6 to 8) */}
+          <div className="md:col-span-4">
+            <div className="text-[13px] font-mono text-[#B5B0A6] mb-3">
+              CONTACT
+            </div>
+            <div className="space-y-2 text-[15px] text-[#FFFFFF]">
+              <div>
+                <a href={`tel:${copy.footer.phone.replace(/\s+/g, '')}`} className="hover:text-[#E5A823] transition-colors">
+                  {copy.footer.phone}
+                </a>
+              </div>
+              <div>
+                <a href={`mailto:${copy.footer.email}`} className="hover:text-[#E5A823] transition-colors">
+                  {copy.footer.email}
+                </a>
+              </div>
             </div>
           </div>
 
-          {/* Product Links */}
-          <div>
-            <div className="text-[13px] font-medium text-[#181d26] uppercase tracking-wider mb-3">
-              Product
+          {/* Quick Links (cols 9 to 12) */}
+          <div className="md:col-span-3">
+            <div className="text-[13px] font-mono text-[#B5B0A6] mb-3">
+              NAVIGATE
             </div>
-            <ul className="space-y-2.5 text-[14px] text-[#41454d]">
-              <li><a href="#architecture" className="hover:text-[#181d26]">POS Engine</a></li>
-              <li><a href="#qr-dining" className="hover:text-[#181d26]">Host-Peer QR</a></li>
-              <li><a href="#kds" className="hover:text-[#181d26]">Kitchen KDS (:3002)</a></li>
-              <li><a href="#architecture" className="hover:text-[#181d26]">Thermal ESC/POS</a></li>
-              <li><a href="#pricing" className="hover:text-[#181d26]">Pricing (₹35,000)</a></li>
-            </ul>
-          </div>
-
-          {/* Architecture Links */}
-          <div>
-            <div className="text-[13px] font-medium text-[#181d26] uppercase tracking-wider mb-3">
-              Architecture
-            </div>
-            <ul className="space-y-2.5 text-[14px] text-[#41454d]">
-              <li><a href="#architecture" className="hover:text-[#181d26]">SQLite WAL Mode</a></li>
-              <li><a href="#architecture" className="hover:text-[#181d26]">Local LAN Server (:3003)</a></li>
-              <li><a href="#architecture" className="hover:text-[#181d26]">Dedicated VPS Isolation</a></li>
-              <li><a href="#architecture" className="hover:text-[#181d26]">Zero-Downtime Guarantee</a></li>
-              <li><a href="#faq" className="hover:text-[#181d26]">Hardware Allowlist</a></li>
-            </ul>
-          </div>
-
-          {/* Company & Support */}
-          <div>
-            <div className="text-[13px] font-medium text-[#181d26] uppercase tracking-wider mb-3">
-              Support
-            </div>
-            <ul className="space-y-2.5 text-[14px] text-[#41454d]">
-              <li><a href="#faq" className="hover:text-[#181d26]">Documentation</a></li>
-              <li><a href="#faq" className="hover:text-[#181d26]">API Reference</a></li>
-              <li><a href="#pricing" className="hover:text-[#181d26]">Dedicated Onboarding</a></li>
-              <li><a href="#faq" className="hover:text-[#181d26]">WhatsApp Support</a></li>
-              <li><a href="#faq" className="hover:text-[#181d26]">Status Page</a></li>
+            <ul className="space-y-2 text-[14px] text-[#B5B0A6]">
+              {copy.footer.links.map((link) => (
+                <li key={link.href}>
+                  <a href={link.href} className="hover:text-[#FFFFFF] transition-colors">
+                    {link.label}
+                  </a>
+                </li>
+              ))}
             </ul>
           </div>
         </div>
 
-        {/* Bottom Bar */}
-        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-[13px] text-[#41454d]">
+        {/* 4px Amber Rule (echoing the logo bar decoration) */}
+        <div className="w-full h-[4px] bg-[#E5A823] mb-8" aria-hidden="true" />
+
+        {/* Row 2: Legal and Copyright */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-[13px] text-[#B5B0A6]">
           <div>
-            © {new Date().getFullYear()} RestroDash Technologies Inc. All rights reserved.
+            {copy.footer.legal}
           </div>
           <div className="flex items-center gap-6">
-            <a href="#faq" className="hover:text-[#181d26]">Privacy Policy</a>
-            <a href="#faq" className="hover:text-[#181d26]">Terms of Service</a>
-            <a href="#faq" className="hover:text-[#181d26]">Security</a>
+            <a href="#faq" className="hover:text-[#FFFFFF] transition-colors">
+              Privacy Policy
+            </a>
+            <a href="#faq" className="hover:text-[#FFFFFF] transition-colors">
+              Terms of Service
+            </a>
           </div>
         </div>
       </div>
