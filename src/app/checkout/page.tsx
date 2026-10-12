@@ -217,7 +217,7 @@ export default function CheckoutPage() {
         amount: finalTotal * 100,
         currency: 'INR',
         name: 'RestroDash Technologies',
-        description: `Dedicated POS Node - ${onboardingData?.restaurantName || 'Restaurant'}`,
+        description: `POS Subscription - ${onboardingData?.restaurantName || 'Restaurant'}`,
         image: '/restro-logo.png',
         handler: async (response: any) => {
           await triggerProvisioning(response.razorpay_payment_id || 'pay_' + Date.now());
@@ -283,7 +283,7 @@ export default function CheckoutPage() {
               Your restaurant instance is ready
             </h1>
             <p className="text-[16px] text-[#5A564D] leading-[1.6] mb-8">
-              We have allocated your dedicated cloud instance, seeded your database, and activated your table QR codes.
+              Your restaurant POS and tableside QR ordering are configured and ready.
             </p>
 
             <div className="bg-[#F4F1EA] rounded-[16px] p-6 border border-[#E6E1D6] text-left mb-8 space-y-2.5 text-[15px]">
@@ -292,16 +292,16 @@ export default function CheckoutPage() {
                 <span className="font-medium text-[#181818]">{onboardingData?.restaurantName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#5A564D]">Subdomain</span>
+                <span className="text-[#5A564D]">Web Address</span>
                 <span className="font-medium text-[#181818]">{onboardingData?.subdomain}.restrodash.in</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#5A564D]">Tables Seeded</span>
+                <span className="text-[#5A564D]">Dining Tables</span>
                 <span className="font-medium text-[#181818]">{onboardingData?.tableCount || 12} Tables</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#5A564D]">Database</span>
-                <span className="font-medium text-[#181818]">Dedicated restro.db</span>
+                <span className="text-[#5A564D]">System Status</span>
+                <span className="font-medium text-[#181818]">Active</span>
               </div>
             </div>
 
@@ -327,10 +327,10 @@ export default function CheckoutPage() {
             <div className="lg:col-span-7 space-y-6">
               <div className="bg-[#FFFFFF] rounded-[24px] border border-[#E6E1D6] p-8 sm:p-10 shadow-xs">
                 <h1 className="text-[28px] sm:text-[32px] font-normal text-[#181818] leading-[1.2] tracking-[-0.02em] mb-2">
-                  {onboardingData?.restaurantName || 'Restaurant'} Deployment
+                  {onboardingData?.restaurantName || 'Restaurant'} Setup
                 </h1>
                 <p className="text-[15px] text-[#5A564D] mb-6">
-                  Target instance: <strong className="text-[#181818]">{onboardingData?.subdomain || 'your-subdomain'}.restrodash.in</strong>
+                  Web address: <strong className="text-[#181818]">{onboardingData?.subdomain || 'your-subdomain'}.restrodash.in</strong>
                 </p>
 
                 {/* Plan switcher */}
@@ -362,20 +362,16 @@ export default function CheckoutPage() {
                 {/* Specifications checklist */}
                 <div className="divide-y divide-[#E6E1D6] text-[15px]">
                   <div className="py-3 flex justify-between">
-                    <span className="text-[#5A564D]">Tenant Architecture</span>
-                    <span className="font-medium text-[#181818]">Dedicated Cloud Instance (Private restro.db)</span>
-                  </div>
-                  <div className="py-3 flex justify-between">
-                    <span className="text-[#5A564D]">Local Terminals</span>
-                    <span className="font-medium text-[#181818]">Unlimited Local Counter Nodes</span>
+                    <span className="text-[#5A564D]">Dining Tables</span>
+                    <span className="font-medium text-[#181818]">{onboardingData?.tableCount || 12} Tables (QR ordering enabled)</span>
                   </div>
                   <div className="py-3 flex justify-between">
                     <span className="text-[#5A564D]">Kitchen Displays</span>
                     <span className="font-medium text-[#181818]">Multi-Station KDS Screens</span>
                   </div>
                   <div className="py-3 flex justify-between">
-                    <span className="text-[#5A564D]">Tableside Dining</span>
-                    <span className="font-medium text-[#181818]">Host-Peer QR ({onboardingData?.tableCount || 12} tables)</span>
+                    <span className="text-[#5A564D]">Tableside Ordering</span>
+                    <span className="font-medium text-[#181818]">Included for all waitstaff</span>
                   </div>
                   <div className="py-3 flex justify-between">
                     <span className="text-[#5A564D]">Commission Fee</span>
@@ -464,7 +460,7 @@ export default function CheckoutPage() {
                 {/* Price Breakdown */}
                 <div className="space-y-3.5 text-[15px] mb-8">
                   <div className="flex justify-between text-[#5A564D]">
-                    <span>Dedicated Instance ({billingCycle})</span>
+                    <span>POS Plan ({billingCycle === 'monthly' ? 'Monthly' : 'Annual'})</span>
                     <span>₹{basePrice.toLocaleString('en-IN')}</span>
                   </div>
 
@@ -512,12 +508,12 @@ export default function CheckoutPage() {
                   {loading
                     ? 'Processing...'
                     : finalTotal === 0
-                    ? 'Activate Instance (₹0 Pilot) →'
+                    ? 'Activate Free Pilot (₹0) →'
                     : `Pay with Razorpay (₹${finalTotal.toLocaleString('en-IN')}) →`}
                 </button>
 
                 <div className="mt-4 text-center text-[12px] text-[#5A564D]">
-                  Powered by Razorpay • Instant automated provisioning
+                  Powered by Razorpay • Instant account activation
                 </div>
               </div>
             </div>
