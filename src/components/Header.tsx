@@ -32,7 +32,7 @@ export function Header() {
       {/* Skip to Content */}
       <a
         href="#modules"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 z-50 bg-[#E5A823] text-[#181818] px-4 py-2 rounded-[8px] font-medium"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 z-50 bg-[#FFFFFF] text-[#181818] px-4 py-2 rounded-[8px] font-medium"
       >
         Skip to content
       </a>
@@ -66,7 +66,7 @@ export function Header() {
                 className="relative py-2 text-[#FFFFFF] hover:text-[#FFFFFF] transition-colors group"
               >
                 {link.label}
-                <span className="absolute bottom-0 left-0 w-0 h-[3px] bg-[#E5A823] transition-all duration-200 group-hover:w-full" />
+                <span className="absolute bottom-0 left-0 w-0 h-[2px] bg-[#FFFFFF] transition-all duration-200 group-hover:w-full" />
               </a>
             ))}
           </nav>

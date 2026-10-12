@@ -51,7 +51,7 @@ export function Hero() {
               {copy.hero.cta}
             </Link>
             <a
-              href="#how"
+              href="#pricing"
               className="text-[15px] font-normal text-[#FFFFFF] underline underline-offset-8 hover:text-[#B5B0A6] transition-colors"
             >
               {copy.hero.link}

@@ -40,12 +40,12 @@ export function Footer() {
             </div>
             <div className="space-y-2 text-[15px] text-[#FFFFFF]">
               <div>
-                <a href={`tel:${copy.footer.phone.replace(/\s+/g, '')}`} className="hover:text-[#E5A823] transition-colors">
+                <a href={`tel:${copy.footer.phone.replace(/\s+/g, '')}`} className="hover:text-[#FFFFFF] transition-colors">
                   {copy.footer.phone}
                 </a>
               </div>
               <div>
-                <a href={`mailto:${copy.footer.email}`} className="hover:text-[#E5A823] transition-colors">
+                <a href={`mailto:${copy.footer.email}`} className="hover:text-[#FFFFFF] transition-colors">
                   {copy.footer.email}
                 </a>
               </div>
@@ -69,8 +69,8 @@ export function Footer() {
           </div>
         </div>
 
-        {/* 4px Amber Rule (echoing the logo bar decoration) */}
-        <div className="w-full h-[4px] bg-[#E5A823] mb-8" aria-hidden="true" />
+        {/* Clean White Rule */}
+        <div className="w-full h-[1px] bg-[#FFFFFF]/30 mb-8" aria-hidden="true" />
 
         {/* Row 2: Legal and Copyright */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-[13px] text-[#B5B0A6]">

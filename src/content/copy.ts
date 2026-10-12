@@ -5,7 +5,6 @@ export const copy = {
   header: {
     links: [
       { label: 'What it does', href: '#modules' },
-      { label: 'How it works', href: '#how' },
       { label: 'Pricing', href: '#pricing' },
       { label: 'Questions', href: '#faq' },
     ],
@@ -14,9 +13,9 @@ export const copy = {
   hero: {
     h1: 'Orders from the table, straight to the kitchen.',
     lead:
-      'RestroDash is QR ordering and point-of-sale software for restaurants. Guests order from their phones and your team sees every order in one place.',
+      'RestroDash is QR ordering and kitchen printing software for restaurants. Guests order from their phones and your kitchen prints tickets instantly.',
     cta: 'Get started',
-    link: 'See how an order moves',
+    link: 'View pricing',
   },
   pricing: {
     h2: 'Simple, transparent pricing',
@@ -39,47 +38,25 @@ export const copy = {
         id: 'qr-ordering',
         title: 'QR ordering',
         description:
-          'Each table gets a QR code. Guests scan it, browse the menu and place an order from their phone.',
-        image: '/images/module-qr.jpg',
-        imageAlt: 'Dining table with place settings and tableware ready for service',
-      },
-      {
-        id: 'point-of-sale',
-        title: 'Point of sale',
-        description: 'Take counter and table orders, split bills and print receipts.',
-        image: '/images/module-pos.jpg',
-        imageAlt: 'Counter station and cafe service area',
+          'Each table gets a dedicated QR stand. Guests scan it, browse the menu and place orders directly from their phones.',
+        image: '/images/qr-table-stand.jpg',
+        imageAlt: 'Table with Restro QR stand for digital ordering',
       },
       {
         id: 'kitchen-orders',
-        title: 'Kitchen orders',
+        title: 'Kitchen tickets & KOT',
         description:
-          'New orders reach the kitchen as they are placed, as a printed ticket or on a kitchen screen.',
-        image: '/images/module-kitchen.jpg',
-        imageAlt: 'Kitchen pass with freshly prepared dishes',
-      },
-      {
-        id: 'menu-management',
-        title: 'Menu management',
-        description:
-          'Edit items, prices and availability once. Changes apply to every table and the counter.',
-        image: '/images/module-menu.jpg',
-        imageAlt: 'Culinary prep and fresh ingredients ready for cooking',
+          'Orders reach the kitchen the instant they are placed—printed automatically on thermal KOT tickets or routed to kitchen screens.',
+        image: '/images/kitchen-kot-printer.jpg',
+        imageAlt: 'Kitchen thermal printer printing live KOT receipt',
       },
       {
         id: 'payments',
-        title: 'Payments',
+        title: 'Payments & settlement',
         description:
-          'Settle the bill at the table or at the counter with the payment methods you set up.',
-        image: '/images/module-payments.jpg',
-        imageAlt: 'Restaurant dining table settling the bill',
-      },
-      {
-        id: 'reports',
-        title: 'Reports',
-        description: 'See sales by day, item and table, and export them for your accountant.',
-        image: '/images/module-reports.jpg',
-        imageAlt: 'Desk ledger and sales summary review',
+          'Settle tables in seconds at the counter or tableside with UPI, card tap, or cash.',
+        image: '/images/card-payment-terminal.jpg',
+        imageAlt: 'Card payment terminal on counter',
       },
     ],
   },
@@ -215,7 +192,7 @@ export const copy = {
     email: 'support@restrodash.in',
     links: [
       { label: 'What it does', href: '#modules' },
-      { label: 'How it works', href: '#how' },
+      { label: 'Pricing', href: '#pricing' },
       { label: 'Questions', href: '#faq' },
       { label: 'Book a demo', href: '#demo' },
     ],

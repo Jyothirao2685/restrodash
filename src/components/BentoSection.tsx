@@ -53,9 +53,9 @@ export function BentoSection() {
                 <rect x="15" y="12" width="60" height="16" />
                 <rect x="15" y="32" width="60" height="16" />
                 <rect x="15" y="52" width="60" height="16" />
-                <circle cx="85" cy="20" r="3" fill="#E5A823" stroke="none" />
-                <circle cx="85" cy="40" r="3" fill="#E5A823" stroke="none" />
-                <circle cx="85" cy="60" r="3" fill="#E5A823" stroke="none" />
+                <circle cx="85" cy="20" r="3" fill="#FFFFFF" stroke="none" />
+                <circle cx="85" cy="40" r="3" fill="#FFFFFF" stroke="none" />
+                <circle cx="85" cy="60" r="3" fill="#FFFFFF" stroke="none" />
               </svg>
             </div>
           </div>
@@ -74,7 +74,7 @@ export function BentoSection() {
             {/* Flat line illustration (paper lines with amber detail) */}
             <div className="self-end mt-6 sm:mt-0" aria-hidden="true">
               <svg width="100" height="80" viewBox="0 0 100 80" fill="none" stroke="#FBFAF7" strokeWidth="2" strokeLinecap="square">
-                <circle cx="50" cy="40" r="14" stroke="#E5A823" />
+                <circle cx="50" cy="40" r="14" stroke="#FFFFFF" />
                 <path d="M50 15v11M50 54v11M25 40h11M64 40h11" />
                 <circle cx="50" cy="12" r="3" fill="#FBFAF7" stroke="none" />
                 <circle cx="50" cy="68" r="3" fill="#FBFAF7" stroke="none" />

@@ -48,7 +48,7 @@ export function OrderStepsSection() {
                     {/* 4px Amber bar for active step, repeating logo bar motif */}
                     <span
                       className={`absolute left-0 top-0 bottom-0 w-[4px] rounded-full transition-all duration-200 ${
-                        isActive ? 'bg-[#E5A823]' : 'bg-transparent'
+                        isActive ? 'bg-[#FFFFFF]' : 'bg-transparent'
                       }`}
                     />
 
@@ -71,7 +71,7 @@ export function OrderStepsSection() {
             {/* Mobile Stacked Step Layout (below 768px) */}
             <div className="md:hidden flex flex-col gap-10">
               {copy.steps.items.map((item) => (
-                <div key={item.step} className="border-l-2 border-[#E5A823] pl-4">
+                <div key={item.step} className="border-l-2 border-[#FFFFFF] pl-4">
                   <div className="text-[12px] font-mono opacity-60 mb-1">
                     0{item.step}
                   </div>

@@ -190,7 +190,10 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className={`${manrope.className} ${manrope.variable} min-h-screen bg-[#FBFAF7] text-[#181818] antialiased selection:bg-[#181818] selection:text-[#FBFAF7]`}>
+      <body
+        suppressHydrationWarning
+        className={`${manrope.className} ${manrope.variable} min-h-screen bg-[#FBFAF7] text-[#181818] antialiased selection:bg-[#181818] selection:text-[#FBFAF7]`}
+      >
         {children}
       </body>
     </html>

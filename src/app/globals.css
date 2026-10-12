@@ -10,8 +10,8 @@
     --color-white: #FFFFFF;
     --color-muted-light: #5A564D;
     --color-muted-dark: #B5B0A6;
-    --color-amber: #E5A823;
-    --color-amber-hover: #EDB93F;
+    --color-amber: #FFFFFF;
+    --color-amber-hover: #F4F1EA;
     --color-error: #B3261E;
     --color-success: #1F7A4D;
     --color-field-border: #8A857B;
@@ -67,7 +67,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .btn-amber {
-  background-color: #E5A823;
+  background-color: #FFFFFF;
   color: #181818;
   font-size: 15px;
   font-weight: 500;
@@ -84,7 +84,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .btn-amber:hover {
-  background-color: #EDB93F;
+  background-color: #F4F1EA;
 }
 
 /* Primary Button on Light Band: Ink with White Text */
