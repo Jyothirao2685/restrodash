@@ -33,6 +33,7 @@ function OnboardingContent() {
   );
 
   // Validation & Live Status
+  const [step2Error, setStep2Error] = useState<string | null>(null);
   const [subdomainChecking, setSubdomainChecking] = useState(false);
   const [subdomainAvailable, setSubdomainAvailable] = useState<boolean | null>(null);
   const [subdomainError, setSubdomainError] = useState<string | null>(null);
@@ -74,8 +75,8 @@ function OnboardingContent() {
       ownerName: ownerName.trim(),
       ownerEmail: ownerEmail.trim().toLowerCase(),
       ownerPassword,
-      masterPin,
-      approvalPin,
+      masterPin: masterPin || '1234',
+      approvalPin: approvalPin || masterPin || '1234',
       tableCount,
       currency,
       currencySymbol,
@@ -261,12 +262,37 @@ function OnboardingContent() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (ownerName && ownerEmail && ownerPassword.length >= 6 && masterPin.length === 4 && approvalPin.length >= 4) {
-                  setStep(3);
+                setStep2Error(null);
+                if (!ownerName.trim()) {
+                  setStep2Error('Please enter your full name.');
+                  return;
                 }
+                if (!ownerEmail.trim()) {
+                  setStep2Error('Please enter your email address.');
+                  return;
+                }
+                if (ownerPassword.length < 6) {
+                  setStep2Error('Admin password must be at least 6 characters.');
+                  return;
+                }
+                if (masterPin.length !== 4) {
+                  setStep2Error('Hardware Master PIN must be exactly 4 digits.');
+                  return;
+                }
+                if (approvalPin && approvalPin.length < 4) {
+                  setStep2Error('Manager Approval PIN must be at least 4 digits (or leave blank to match Master PIN).');
+                  return;
+                }
+                setStep(3);
               }}
               className="space-y-5"
             >
+              {step2Error && (
+                <div className="p-3.5 rounded-[12px] bg-[#FFF0EF] border border-[#B3261E]/30 text-[#B3261E] text-[14px]">
+                  {step2Error}
+                </div>
+              )}
+
               <div>
                 <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
                   Owner Full Name
@@ -276,7 +302,10 @@ function OnboardingContent() {
                   required
                   placeholder="e.g. Rohit Sharma"
                   value={ownerName}
-                  onChange={(e) => setOwnerName(e.target.value)}
+                  onChange={(e) => {
+                    setStep2Error(null);
+                    setOwnerName(e.target.value);
+                  }}
                   className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[15px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                 />
               </div>
@@ -290,7 +319,10 @@ function OnboardingContent() {
                   required
                   placeholder="owner@restaurant.com"
                   value={ownerEmail}
-                  onChange={(e) => setOwnerEmail(e.target.value)}
+                  onChange={(e) => {
+                    setStep2Error(null);
+                    setOwnerEmail(e.target.value);
+                  }}
                   className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[15px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                 />
               </div>
@@ -305,7 +337,10 @@ function OnboardingContent() {
                   minLength={6}
                   placeholder="At least 6 characters"
                   value={ownerPassword}
-                  onChange={(e) => setOwnerPassword(e.target.value)}
+                  onChange={(e) => {
+                    setStep2Error(null);
+                    setOwnerPassword(e.target.value);
+                  }}
                   className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[15px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                 />
               </div>
@@ -323,7 +358,10 @@ function OnboardingContent() {
                     maxLength={4}
                     placeholder="••••"
                     value={masterPin}
-                    onChange={(e) => setMasterPin(e.target.value.replace(/[^0-9]/g, ''))}
+                    onChange={(e) => {
+                      setStep2Error(null);
+                      setMasterPin(e.target.value.replace(/[^0-9]/g, ''));
+                    }}
                     className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[16px] text-center tracking-widest text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                   />
                   <span className="text-[12px] text-[#5A564D] block mt-1">
@@ -333,20 +371,22 @@ function OnboardingContent() {
 
                 <div>
                   <label className="block text-[14px] font-medium text-[#181818] mb-1.5">
-                    Manager Approval PIN
+                    Manager Approval PIN <span className="text-[12px] font-normal text-[#5A564D]">(Optional)</span>
                   </label>
                   <input
                     type="password"
                     inputMode="numeric"
-                    required
                     maxLength={6}
-                    placeholder="••••"
+                    placeholder="Same as Master"
                     value={approvalPin}
-                    onChange={(e) => setApprovalPin(e.target.value.replace(/[^0-9]/g, ''))}
+                    onChange={(e) => {
+                      setStep2Error(null);
+                      setApprovalPin(e.target.value.replace(/[^0-9]/g, ''));
+                    }}
                     className="w-full border border-[#8A857B] rounded-[12px] px-4 py-3 text-[16px] text-center tracking-widest text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
                   />
                   <span className="text-[12px] text-[#5A564D] block mt-1">
-                    4-6 digits for voids & discounts
+                    Defaults to Master PIN if left blank
                   </span>
                 </div>
               </div>
@@ -354,15 +394,17 @@ function OnboardingContent() {
               <div className="pt-4 flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={() => {
+                    setStep2Error(null);
+                    setStep(1);
+                  }}
                   className="btn-ink bg-[#FFFFFF] text-[#181818] border-[#8A857B] hover:bg-[#F4F1EA] py-3 px-6 text-[14px]"
                 >
                   ← Back
                 </button>
                 <button
                   type="submit"
-                  disabled={!ownerName || !ownerEmail || ownerPassword.length < 6 || masterPin.length !== 4 || approvalPin.length < 4}
-                  className="btn-ink flex-1 py-3 text-[15px] disabled:opacity-40"
+                  className="btn-ink flex-1 py-3 text-[15px]"
                 >
                   Continue to Dining Floor →
                 </button>
