@@ -42,10 +42,19 @@ jobs:
         if: steps.check-secrets.outputs.configured == 'true'
         run: |
           mkdir -p deploy-package
-          cp -r .next/standalone/* deploy-package/
+          # Copy all standalone files including hidden .next directory and BUILD_ID
+          cp -a .next/standalone/. deploy-package/
+          # Ensure static files and public assets are merged into bundle
           mkdir -p deploy-package/.next
-          cp -r .next/static deploy-package/.next/static
-          cp -r public deploy-package/public
+          cp -r .next/static deploy-package/.next/
+          cp -r public deploy-package/
+          # Verify BUILD_ID is present
+          if [ -f deploy-package/.next/BUILD_ID ]; then
+            echo "✅ BUILD_ID successfully included in deployment package."
+          else
+            echo "❌ BUILD_ID missing! Copying .next build directly."
+            cp -r .next/* deploy-package/.next/
+          fi
 
       - name: Setup SSH Key
         if: steps.check-secrets.outputs.configured == 'true'
