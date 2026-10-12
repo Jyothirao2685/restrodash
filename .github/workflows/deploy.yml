@@ -70,11 +70,14 @@ jobs:
         if: steps.check-secrets.outputs.configured == 'true'
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.LIGHTSAIL_USER || 'ubuntu' }}@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
-            # Stop legacy process if running
+            # Stop legacy portal if running
             pm2 stop restrodash-portal 2>/dev/null || true
             pm2 delete restrodash-portal 2>/dev/null || true
 
+            # Reset restrodash-saas to ensure correct PORT=3005 binding
+            pm2 delete restrodash-saas 2>/dev/null || true
+
             cd /opt/restrodash/saas
-            PORT=3000 pm2 start server.js --name "restrodash-saas" --update-env || pm2 restart "restrodash-saas"
+            PORT=3005 HOSTNAME=0.0.0.0 pm2 start server.js --name "restrodash-saas"
             pm2 save
           EOF
