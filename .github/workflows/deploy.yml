@@ -3,8 +3,7 @@ name: CI/CD Auto Build and Deploy
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -28,19 +27,19 @@ jobs:
         env:
           NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ secrets.NEXT_PUBLIC_RAZORPAY_KEY_ID }}
 
-      # Deployment only runs on pushes to main when secrets are provided
       - name: Check Deployment Secrets
         id: check-secrets
         run: |
           if [ -n "${{ secrets.LIGHTSAIL_HOST }}" ] && [ -n "${{ secrets.LIGHTSAIL_SSH_KEY }}" ]; then
             echo "configured=true" >> $GITHUB_OUTPUT
+            echo "✅ Deployment secrets detected. Proceeding with deployment to ${{ secrets.LIGHTSAIL_HOST }}."
           else
             echo "configured=false" >> $GITHUB_OUTPUT
-            echo "⚠️ LIGHTSAIL_HOST or LIGHTSAIL_SSH_KEY not configured in GitHub Secrets. Build passed, skipping VPS sync."
+            echo "⚠️ LIGHTSAIL_HOST or LIGHTSAIL_SSH_KEY not configured in GitHub Secrets. Build passed, skipping VPS deployment."
           fi
 
       - name: Prepare Standalone Deployment Bundle
-        if: steps.check-secrets.outputs.configured == 'true' && github.event_name == 'push'
+        if: steps.check-secrets.outputs.configured == 'true'
         run: |
           mkdir -p deploy-package
           cp -r .next/standalone/* deploy-package/
@@ -49,22 +48,33 @@ jobs:
           cp -r public deploy-package/public
 
       - name: Setup SSH Key
-        if: steps.check-secrets.outputs.configured == 'true' && github.event_name == 'push'
+        if: steps.check-secrets.outputs.configured == 'true'
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
 
-      - name: Deploy to AWS Lightsail
-        if: steps.check-secrets.outputs.configured == 'true' && github.event_name == 'push'
+      - name: Ensure Server Directory Exists
+        if: steps.check-secrets.outputs.configured == 'true'
         run: |
-          ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
-          rsync -avz --delete deploy-package/ ${{ secrets.LIGHTSAIL_USER || 'ubuntu' }}@${{ secrets.LIGHTSAIL_HOST }}:/var/www/restrodash/
+          ssh -o StrictHostKeyChecking=no ${{ secrets.LIGHTSAIL_USER || 'ubuntu' }}@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
+            sudo mkdir -p /opt/restrodash/saas
+            sudo chown -R $USER:$USER /opt/restrodash/saas
+          EOF
+
+      - name: Deploy Build to AWS Lightsail
+        if: steps.check-secrets.outputs.configured == 'true'
+        run: |
+          rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" deploy-package/ ${{ secrets.LIGHTSAIL_USER || 'ubuntu' }}@${{ secrets.LIGHTSAIL_HOST }}:/opt/restrodash/saas/
 
       - name: Restart Application via PM2
-        if: steps.check-secrets.outputs.configured == 'true' && github.event_name == 'push'
+        if: steps.check-secrets.outputs.configured == 'true'
         run: |
-          ssh ${{ secrets.LIGHTSAIL_USER || 'ubuntu' }}@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
-            cd /var/www/restrodash
+          ssh -o StrictHostKeyChecking=no ${{ secrets.LIGHTSAIL_USER || 'ubuntu' }}@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
+            # Stop legacy process if running
+            pm2 stop restrodash-portal 2>/dev/null || true
+            pm2 delete restrodash-portal 2>/dev/null || true
+
+            cd /opt/restrodash/saas
             PORT=3000 pm2 start server.js --name "restrodash-saas" --update-env || pm2 restart "restrodash-saas"
             pm2 save
           EOF
