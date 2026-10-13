@@ -1,0 +1,46 @@
+name: Clean VPS for Ava AI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  clean-vps:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH Key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+
+      - name: Purge RestroDash and Clean VPS
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.LIGHTSAIL_USER || 'ubuntu' }}@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
+            echo "🛑 Stopping and deleting all PM2 processes..."
+            pm2 stop all 2>/dev/null || true
+            pm2 delete all 2>/dev/null || true
+            pm2 cleardump 2>/dev/null || true
+            pm2 save --force 2>/dev/null || true
+
+            echo "🧹 Removing RestroDash directories..."
+            sudo rm -rf /opt/restrodash
+
+            echo "🔌 Freeing up ports (3000, 3001, 3002, 3003, 3005)..."
+            sudo fuser -k 3000/tcp 2>/dev/null || true
+            sudo fuser -k 3001/tcp 2>/dev/null || true
+            sudo fuser -k 3002/tcp 2>/dev/null || true
+            sudo fuser -k 3003/tcp 2>/dev/null || true
+            sudo fuser -k 3005/tcp 2>/dev/null || true
+
+            echo "📦 Creating fresh target directory for Ava AI (/opt/ava-ai)..."
+            sudo mkdir -p /opt/ava-ai
+            sudo chown -R $USER:$USER /opt/ava-ai
+
+            echo "✅ VPS successfully cleaned and prepared for Ava AI!"
+            echo "--- System Status ---"
+            free -h
+            df -h /
+            pm2 status
+          EOF
