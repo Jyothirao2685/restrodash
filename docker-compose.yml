@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  restrodash:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: restrodash-saas
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_RAZORPAY_KEY_ID=${NEXT_PUBLIC_RAZORPAY_KEY_ID:-rzp_test_placeholder}
+      - JWT_SECRET=${JWT_SECRET:-default_jwt_secret_change_in_production}
+    volumes:
+      - restrodash_instances:/app/instances
+
+volumes:
+  restrodash_instances:
+    driver: local

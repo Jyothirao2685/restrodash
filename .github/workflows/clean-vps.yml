@@ -2,8 +2,6 @@ name: Clean VPS for Ava AI
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   clean-vps:
