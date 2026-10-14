@@ -1,4 +1,4 @@
-# Restaurant Domain & QR Code Setup Guide 📱🍽️
+# Restaurant Domain and QR Code Setup Guide
 
 When running RestroDash for your restaurant, tableside QR ordering requires customers' mobile phones to reach your RestroDash server. 
 
@@ -9,7 +9,7 @@ This guide explains **how QR ordering works across different deployment environm
 
 ---
 
-## ⚠️ The "Localhost" Reality: Why Phones Can't Scan `http://localhost:3000`
+## Accessing Localhost Servers from Mobile Devices
 
 If your restaurant computer is running RestroDash at `http://localhost:3000`:
 - On your computer, `localhost` means *this computer*.
@@ -151,7 +151,7 @@ If your restaurant does not have a reliable internet connection or you prefer an
 
 ---
 
-## 🖨️ How Table Tokens Work
+## How Table Tokens Work
 
 In RestroDash, each table is assigned a secure random token during database setup:
 - Table 1: `T1-8a9f4c`

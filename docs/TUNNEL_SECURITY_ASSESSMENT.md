@@ -1,4 +1,4 @@
-# Cloudflare Tunnel Security Assessment & Operational Policy 🛡️
+# Cloudflare Tunnel Security Assessment and Operational Policy
 
 ## 1. Executive Summary
 
@@ -73,7 +73,7 @@ When a local billing counter computer opens a public HTTPS tunnel (`*.trycloudfl
 
 ## 4. The Physical QR Code Operational Reality
 
-> ⚠️ **The Restaurant Paradox:** If a tunnel rotates and generates a new domain every 8 hours, what happens to **physical stickers printed on tables**?
+> **Physical Deployment Consideration:** If a tunnel rotates and generates a new domain every 8 hours, what happens to **physical stickers printed on tables**?
 
 RestroDash provides three supported operational approaches based on restaurant hardware:
 

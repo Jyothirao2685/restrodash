@@ -1,141 +1,71 @@
-# RestroDash 🍽️
+# RestroDash
 
-> **Open-Source Restaurant POS, Live QR Tableside Dining & Kitchen Display Engine.**
+RestroDash is an open-source restaurant POS, tableside QR ordering engine, and kitchen display system (KDS). It is designed to run offline on local counter hardware, on cloud virtual private servers, or in containerized Docker environments.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Next.js](https://img.shields.io/badge/Next.js-16.3-black?logo=next.js)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](Dockerfile)
+## Installation
 
-RestroDash is an open-source, plug-and-play restaurant management platform designed for tableside QR dining, kitchen order ticketing (KOT), real-time kitchen display screens (KDS), and billing counter POS operations.
-
----
-
-## ✨ Features
-
-- **📱 Tableside QR Ordering:** Customers scan a table QR code on their smartphone to browse the digital menu and submit orders directly—no app download required.
-- **🖥️ Kitchen Display System (KDS):** Real-time order dispatch screen showing incoming orders with preparation timers, course stages, and one-tap status updates.
-- **⚡ Counter POS & Waiter Mode:** Fast order taking, table reassignment, split bills, and instant receipt generation.
-- **🛡️ Isolated SQLite Engine (WAL Mode):** Data is isolated in zero-maintenance SQLite databases running in Write-Ahead Log mode with zero cloud database dependency.
-- **🚀 100% Free & Open-Source:** No subscription fees, no locked payment gates, no credit card required. Free for personal and commercial use under the **MIT License**.
-
----
-
-## 📱 How Table QR Ordering Works (Localhost vs VPS)
-
-A common question is: ***"If I run RestroDash on my restaurant's billing computer at `localhost:3000`, how can customers scan QR codes from their mobile phones?"***
-
-Because `localhost` on a customer's phone refers to the phone itself, the QR code must point to a reachable address. RestroDash supports three easy methods:
-
-| Method | Best For | Requirement | Cost |
-| :--- | :--- | :--- | :--- |
-| **1. Automatic Cloudflare Tunnel** | Local counter PC (Zero config) | **Built-in (Starts automatically in UI)** | **100% Free** |
-| **2. Cloud VPS + Custom Domain** | Production restaurant | Any $4 VPS + `order.yourrestaurant.com` | ~$4/month |
-| **3. Local Wi-Fi (LAN IP)** | Offline-only restaurant | Same Wi-Fi router (`http://192.168.1.x:3000`) | **100% Free** |
-
-- 🛡️ **Security Assessment & Rotation Policy:** [Cloudflare Tunnel Security Assessment](docs/TUNNEL_SECURITY_ASSESSMENT.md)
-- 📖 **Domain & QR Setup Guide:** [Restaurant Domain & QR Setup Guide](docs/DOMAIN_AND_QR_SETUP.md)
-
----
-
-## 🚀 Quickstart & Deployment
-
-RestroDash is designed to deploy cleanly on **Docker**, any cloud VPS (AWS, DigitalOcean, Hetzner), or directly on your local computer.
-
-### Option 1: One-Click Docker Deployment (Recommended)
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Jyothirao2685/restrodash.git
-   cd restrodash
-   ```
-
-2. Start the container:
-   ```bash
-   docker compose up -d --build
-   ```
-
-3. Open `http://localhost:3000` in your browser.  
-   Persistent instance databases are stored safely in the Docker volume `restrodash_instances`.
-
----
-
-### Option 2: Direct VPS Deployment (Node.js 22 + PM2)
-
-1. **Install Node.js 22 & PM2:**
-   ```bash
-   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-   sudo apt-get install -y nodejs
-   sudo npm install -g pm2
-   ```
-
-2. **Clone & Install Dependencies:**
-   ```bash
-   git clone https://github.com/Jyothirao2685/restrodash.git /opt/restrodash
-   cd /opt/restrodash
-   npm ci
-   ```
-
-3. **Build & Start with PM2:**
-   ```bash
-   npm run build
-   PORT=3000 pm2 start "npm start" --name "restrodash"
-   pm2 save
-   ```
-
----
-
-### Option 3: Local Development (Windows / Mac / Linux)
+Clone the repository and install dependencies using Node.js 22:
 
 ```bash
-# 1. Install dependencies
+git clone https://github.com/Jyothirao2685/restrodash.git
+cd restrodash
 npm install
+```
 
-# 2. Start local Turbopack dev server
+Alternatively, run RestroDash with Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+## Usage
+
+### Local Development
+
+Start the development server:
+
+```bash
 npm run dev
-
-# 3. Visit http://localhost:3000/onboarding to setup your restaurant & tables
 ```
 
----
+The application runs on `http://localhost:3000`.
 
-## 🗄️ Architecture & System Design
+### Core Interfaces
 
-RestroDash isolates restaurant data at the database boundary. Every restaurant provisioned receives an isolated SQLite database (`restro.db`) running in **Write-Ahead Log (WAL) mode**.
+- Restaurant Setup and Onboarding: `http://localhost:3000/onboarding`
+- Counter POS Terminal: `http://localhost:3000/pos`
+- Kitchen Display System (KDS): `http://localhost:3002/kds`
+- Mobile Tableside Ordering: `http://localhost:3000/m?token=<TABLE_TOKEN>`
 
+### Tableside QR Ordering on Local Hardware
+
+When hosting RestroDash on a local counter computer (`localhost`), customer mobile devices cannot reach `localhost` directly. RestroDash supports three network configurations:
+
+1. Automatic Cloudflare Tunnel: Starts directly from the onboarding interface, providing an encrypted public HTTPS URL without router port forwarding. Includes automated 8-hour session rotation and night-time shutdown.
+2. Cloud VPS and Custom Domain: Host RestroDash on a cloud server and map a custom domain (such as `order.yourrestaurant.com`).
+3. Local Wi-Fi (LAN): Connect customer and staff devices to the same local network using the counter machine's LAN IP address (`http://192.168.x.x:3000`).
+
+Detailed documentation:
+- [Domain and QR Setup Guide](docs/DOMAIN_AND_QR_SETUP.md)
+- [Tunnel Security Assessment and Rotation Policy](docs/TUNNEL_SECURITY_ASSESSMENT.md)
+
+## Architecture
+
+- Frontend and Application Layer: Next.js with React and Tailwind CSS.
+- Database: Isolated SQLite database (`restro.db`) per restaurant instance, running in Write-Ahead Log (WAL) mode.
+- Networking: Integrated tunnel manager for remote tableside ordering and local network fallback.
+
+## Contributing
+
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+
+Please make sure to run lint and build checks before submitting:
+
+```bash
+npm run lint
+npm run build
 ```
-                           ┌──────────────────────────┐
-                           │   Incoming HTTP Request  │
-                           │  (Domain / Cloudflare)   │
-                           └─────────────┬────────────┘
-                                         │
-                                         ▼
-                           ┌──────────────────────────┐
-                           │     RestroDash Engine    │
-                           │      (Next.js Standalone)│
-                           └─────────────┬────────────┘
-                                         │
-                 ┌───────────────────────┴───────────────────────┐
-                 │                                               │
-                 ▼                                               ▼
-    ┌─────────────────────────┐                     ┌─────────────────────────┐
-    │  Table QR Ordering (/m) │                     │   Counter POS / KDS     │
-    │  - Cryptographic Tokens │                     │  - Fast Order Taking    │
-    │  - Mobile Web Menu      │                     │  - Kitchen Display      │
-    │  - Real-Time Cart       │                     │  - Bill Settlement      │
-    └─────────────────────────┘                     └─────────────────────────┘
-```
 
----
+## License
 
-## 🔒 Security & Data Privacy
-
-- **Zero Remote Dependencies:** Operates locally with SQLite; no external third-party database connections or analytics tracking.
-- **Zero Gatekeeping:** No mandatory payment gateways or licensing servers.
-- **Cryptographic QR Tokens:** Table QR codes use secure random tokens preventing unauthorized order tampering across tables.
-
----
-
-## 📜 License
-
-RestroDash is open-source software licensed under the **[MIT License](LICENSE)**. You are free to use, modify, distribute, and self-host for personal or commercial restaurant operations without restriction.
+[MIT](LICENSE)
