@@ -40,6 +40,7 @@ export interface ProvisioningResult {
   token: string;
   dbPath: string;
   createdAt: string;
+  tables: { id: string; number: string; qrToken: string }[];
 }
 
 const FULL_SCHEMA_SQL = `
@@ -948,6 +949,7 @@ export function provisionTenantInstance(
     VALUES (?, ?, ?, 'available', 1, ?, 1, ?, ?)
   `);
 
+  const generatedTables: { id: string; number: string; qrToken: string }[] = [];
   const insertTablesTx = db.transaction(() => {
     for (let i = 1; i <= tableCount; i++) {
       const tableNumberStr = i < 10 ? `0${i}` : `${i}`;
@@ -955,6 +957,7 @@ export function provisionTenantInstance(
       const tableNumber = `T-${tableNumberStr}`;
       const qrToken = `tbl_tok_${crypto.randomBytes(16).toString('hex')}`;
       insertTable.run(tableId, tableNumber, 4, qrToken, nowIso, nowIso);
+      generatedTables.push({ id: tableId, number: tableNumber, qrToken });
     }
   });
   insertTablesTx();
@@ -1023,5 +1026,6 @@ export function provisionTenantInstance(
     token,
     dbPath,
     createdAt: registeredInstance.createdAt,
+    tables: generatedTables,
   };
 }

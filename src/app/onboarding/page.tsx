@@ -10,7 +10,7 @@ function OnboardingContent() {
   const searchParams = useSearchParams();
   const planParam = searchParams.get('plan');
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Form State (NO PRE-FILLS)
   const [subdomain, setSubdomain] = useState('');
@@ -37,6 +37,96 @@ function OnboardingContent() {
   const [subdomainChecking, setSubdomainChecking] = useState(false);
   const [subdomainAvailable, setSubdomainAvailable] = useState<boolean | null>(null);
   const [subdomainError, setSubdomainError] = useState<string | null>(null);
+  const [isProvisioning, setIsProvisioning] = useState(false);
+  const [provisionError, setProvisionError] = useState<string | null>(null);
+  const [provisionResult, setProvisionResult] = useState<any>(null);
+  const [customDomain, setCustomDomain] = useState('');
+
+  // Automatic Cloudflare Quick Tunnel State & Security Controls
+  const [tunnelState, setTunnelState] = useState<{
+    status: string;
+    url: string | null;
+    expiresInMinutes: number;
+    rotationIntervalHours: number;
+    rotationCount: number;
+    error: string | null;
+  } | null>(null);
+  const [tunnelLoading, setTunnelLoading] = useState(false);
+  const [tunnelCopied, setTunnelCopied] = useState(false);
+
+  const fetchTunnelState = async () => {
+    try {
+      const res = await fetch('/api/tunnel');
+      const data = await res.json();
+      if (data.success) {
+        setTunnelState(data);
+      }
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleStartTunnel = async () => {
+    setTunnelLoading(true);
+    try {
+      const res = await fetch('/api/tunnel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start' }),
+      });
+      const data = await res.json();
+      setTunnelState(data);
+    } catch (err) {
+      console.error('Failed to start tunnel:', err);
+    } finally {
+      setTunnelLoading(false);
+    }
+  };
+
+  const handleStopTunnel = async () => {
+    setTunnelLoading(true);
+    try {
+      const res = await fetch('/api/tunnel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop' }),
+      });
+      const data = await res.json();
+      setTunnelState(data);
+    } catch (err) {
+      console.error('Failed to stop tunnel:', err);
+    } finally {
+      setTunnelLoading(false);
+    }
+  };
+
+  const handleRotateTunnel = async () => {
+    setTunnelLoading(true);
+    try {
+      const res = await fetch('/api/tunnel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'rotate' }),
+      });
+      const data = await res.json();
+      setTunnelState(data);
+    } catch (err) {
+      console.error('Failed to rotate tunnel:', err);
+    } finally {
+      setTunnelLoading(false);
+    }
+  };
+
+  // Auto-start tunnel upon entering Step 4 & poll state
+  useEffect(() => {
+    if (step === 4) {
+      fetchTunnelState().then(() => {
+        handleStartTunnel();
+      });
+      const interval = setInterval(fetchTunnelState, 8000);
+      return () => clearInterval(interval);
+    }
+  }, [step]);
 
   // Live subdomain availability check debounce
   useEffect(() => {
@@ -67,29 +157,44 @@ function OnboardingContent() {
     return () => clearTimeout(timer);
   }, [subdomain]);
 
-  const handleProceedToCheckout = () => {
-    const onboardingData = {
-      subdomain: subdomain.trim().toLowerCase(),
-      restaurantName: restaurantName.trim(),
-      serviceModel,
-      ownerName: ownerName.trim(),
-      ownerEmail: ownerEmail.trim().toLowerCase(),
-      ownerPassword,
-      masterPin: masterPin || '1234',
-      approvalPin: approvalPin || masterPin || '1234',
-      tableCount,
-      currency,
-      currencySymbol,
-      timezone,
-      taxPercentage,
-      billingCycle,
-    };
+  const handleLaunchRestaurant = async () => {
+    setIsProvisioning(true);
+    setProvisionError(null);
+    try {
+      const payload = {
+        subdomain: subdomain.trim().toLowerCase(),
+        restaurantName: restaurantName.trim(),
+        serviceModel,
+        ownerName: ownerName.trim(),
+        ownerEmail: ownerEmail.trim().toLowerCase(),
+        ownerPassword,
+        masterPin: masterPin || '1234',
+        approvalPin: approvalPin || masterPin || '1234',
+        tableCount,
+        currency,
+        currencySymbol,
+        timezone,
+        taxPercentage,
+      };
 
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('restrodash_onboarding_data', JSON.stringify(onboardingData));
+      const res = await fetch('/api/onboarding/provision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to setup restaurant instance.');
+      }
+
+      setProvisionResult(data);
+      setStep(4);
+    } catch (err: any) {
+      setProvisionError(err.message || 'Error creating restaurant instance.');
+    } finally {
+      setIsProvisioning(false);
     }
-
-    router.push('/checkout');
   };
 
   return (
@@ -112,13 +217,13 @@ function OnboardingContent() {
 
           {/* Step Progress Tracker */}
           <div className="hidden sm:flex items-center gap-3 text-[14px] text-[#5A564D]">
-            <span className={step >= 1 ? 'font-medium text-[#181818]' : ''}>1. Subdomain</span>
+            <span className={step >= 1 ? 'font-medium text-[#181818]' : ''}>1. Identity</span>
             <span className="opacity-40">→</span>
             <span className={step >= 2 ? 'font-medium text-[#181818]' : ''}>2. Owner & PIN</span>
             <span className="opacity-40">→</span>
             <span className={step >= 3 ? 'font-medium text-[#181818]' : ''}>3. Floor Setup</span>
             <span className="opacity-40">→</span>
-            <span className="opacity-60">4. Checkout</span>
+            <span className={step >= 4 ? 'font-medium text-[#181818]' : ''}>4. Launch & QRs</span>
           </div>
 
           <Link href="/" className="text-[14px] text-[#5A564D] hover:text-[#181818] transition-colors">
@@ -128,15 +233,15 @@ function OnboardingContent() {
       </header>
 
       {/* Main Container */}
-      <main className="max-w-2xl mx-auto px-6 py-12 sm:py-16 w-full flex-1 flex flex-col justify-center">
-        {/* Step 1: Brand & Subdomain */}
+      <main className={`${step === 4 ? 'max-w-4xl' : 'max-w-2xl'} mx-auto px-6 py-12 sm:py-16 w-full flex-1 flex flex-col justify-center`}>
+        {/* Step 1: Brand & Identifier */}
         {step === 1 && (
           <div className="bg-[#FFFFFF] rounded-[24px] border border-[#E6E1D6] p-8 sm:p-12 shadow-xs">
             <h1 className="text-[30px] sm:text-[34px] font-normal text-[#181818] leading-[1.2] tracking-[-0.02em] mb-3">
-              Reserve your restaurant domain & profile
+              Set up your restaurant profile
             </h1>
             <p className="text-[16px] text-[#5A564D] mb-8 leading-[1.6]">
-              Every restaurant receives an isolated cloud instance and a dedicated subdomain with zero-lag local sync.
+              Choose your restaurant name and identifier slug. You can run locally or connect any custom domain.
             </p>
 
             <form
@@ -426,7 +531,7 @@ function OnboardingContent() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                handleProceedToCheckout();
+                handleLaunchRestaurant();
               }}
               className="space-y-6"
             >
@@ -522,9 +627,16 @@ function OnboardingContent() {
                 />
               </div>
 
+              {provisionError && (
+                <div className="p-3.5 rounded-[12px] bg-[#FFF0EF] border border-[#B3261E]/30 text-[#B3261E] text-[14px]">
+                  {provisionError}
+                </div>
+              )}
+
               <div className="pt-4 flex gap-3">
                 <button
                   type="button"
+                  disabled={isProvisioning}
                   onClick={() => setStep(2)}
                   className="btn-ink bg-[#FFFFFF] text-[#181818] border-[#8A857B] hover:bg-[#F4F1EA] py-3 px-6 text-[14px]"
                 >
@@ -532,14 +644,320 @@ function OnboardingContent() {
                 </button>
                 <button
                   type="submit"
-                  className="btn-ink flex-1 py-3 text-[15px]"
+                  disabled={isProvisioning}
+                  className="btn-ink flex-1 py-3 text-[15px] disabled:opacity-50"
                 >
-                  Proceed to Checkout & Coupon →
+                  {isProvisioning ? 'Launching Restaurant...' : 'Launch Restaurant & Generate QRs →'}
                 </button>
               </div>
             </form>
           </div>
         )}
+
+        {/* Step 4: Restaurant Launch & Table QR Hub */}
+        {step === 4 && provisionResult && (
+          <div className="bg-[#FFFFFF] rounded-[24px] border border-[#E6E1D6] p-8 sm:p-12 shadow-xs space-y-8">
+            <div className="text-center">
+              <div className="w-14 h-14 bg-[#1F7A4D]/10 text-[#1F7A4D] rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
+                ✓
+              </div>
+              <h1 className="text-[28px] sm:text-[34px] font-normal text-[#181818] leading-[1.2] tracking-[-0.02em] mb-2">
+                {restaurantName} is Ready!
+              </h1>
+              <p className="text-[16px] text-[#5A564D] leading-[1.6]">
+                Your isolated restaurant database, staff credentials, and table QR tokens have been generated.
+              </p>
+            </div>
+
+            {/* Quick App Launchers */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <a
+                href="/pos"
+                target="_blank"
+                className="p-5 rounded-[16px] bg-[#F4F1EA] border border-[#E6E1D6] hover:border-[#181818] transition-colors text-center"
+              >
+                <div className="text-[16px] font-medium text-[#181818]">Counter POS</div>
+                <div className="text-[12px] text-[#5A564D] mt-1">Billing & KOT orders</div>
+                <div className="text-[13px] font-bold text-[#181818] mt-3">Open POS →</div>
+              </a>
+
+              <a
+                href="http://localhost:3002/kds"
+                target="_blank"
+                className="p-5 rounded-[16px] bg-[#F4F1EA] border border-[#E6E1D6] hover:border-[#181818] transition-colors text-center"
+              >
+                <div className="text-[16px] font-medium text-[#181818]">Kitchen Display (KDS)</div>
+                <div className="text-[12px] text-[#5A564D] mt-1">Chef ticket screen</div>
+                <div className="text-[13px] font-bold text-[#181818] mt-3">Open KDS →</div>
+              </a>
+
+              <a
+                href="/server-standalone"
+                target="_blank"
+                className="p-5 rounded-[16px] bg-[#F4F1EA] border border-[#E6E1D6] hover:border-[#181818] transition-colors text-center"
+              >
+                <div className="text-[16px] font-medium text-[#181818]">Waiter Tableside</div>
+                <div className="text-[12px] text-[#5A564D] mt-1">Mobile tableside app</div>
+                <div className="text-[13px] font-bold text-[#181818] mt-3">Open Waiter App →</div>
+              </a>
+            </div>
+
+            {/* Automatic Cloudflare Tunnel Controller & Security Hub */}
+            <div className="rounded-[16px] bg-[#FFFFFF] border border-[#E6E1D6] p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-3.5 h-3.5 rounded-full ${
+                      tunnelState?.status === 'active'
+                        ? 'bg-[#1F7A4D] animate-pulse'
+                        : tunnelState?.status === 'rotating'
+                        ? 'bg-amber-500 animate-pulse'
+                        : 'bg-[#B3261E]'
+                    }`}
+                  />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-[16px] font-medium text-[#181818]">
+                        Automatic Cloudflare Tunnel
+                      </h3>
+                      <span
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                          tunnelState?.status === 'active'
+                            ? 'bg-[#1F7A4D]/10 text-[#1F7A4D]'
+                            : tunnelState?.status === 'rotating'
+                            ? 'bg-amber-500/10 text-amber-700'
+                            : 'bg-[#B3261E]/10 text-[#B3261E]'
+                        }`}
+                      >
+                        {tunnelState?.status === 'active'
+                          ? 'Live & Secure'
+                          : tunnelState?.status === 'rotating'
+                          ? 'Rotating...'
+                          : 'Stopped'}
+                      </span>
+                    </div>
+                    <p className="text-[12px] text-[#5A564D] mt-0.5">
+                      Zero configuration needed. Automatic HTTPS bridge connects customer phones directly to your counter PC.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Tunnel Action Buttons */}
+                <div className="flex items-center gap-2">
+                  {tunnelState?.status === 'active' ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={tunnelLoading}
+                        onClick={handleRotateTunnel}
+                        className="px-3.5 py-1.5 rounded-[8px] bg-[#F4F1EA] hover:bg-[#E6E1D6] border border-[#8A857B] text-[12px] font-medium text-[#181818] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <span>🔄</span> {tunnelLoading ? 'Rotating...' : 'Rotate Security URL'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={tunnelLoading}
+                        onClick={handleStopTunnel}
+                        className="px-3.5 py-1.5 rounded-[8px] bg-[#FFF0EF] hover:bg-[#FFE0DE] border border-[#B3261E]/30 text-[12px] font-medium text-[#B3261E] transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        Stop Tunnel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={tunnelLoading}
+                      onClick={handleStartTunnel}
+                      className="btn-ink px-4 py-2 text-[13px] flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <span>⚡</span> {tunnelLoading ? 'Starting...' : 'Start Automatic Tunnel'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Active Tunnel URL Banner */}
+              {tunnelState?.status === 'active' && tunnelState.url && (
+                <div className="p-4 rounded-[12px] bg-[#F4F1EA] border border-[#E6E1D6] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-medium text-[#5A564D] uppercase tracking-wider block">
+                      Active Customer HTTPS Endpoint:
+                    </span>
+                    <a
+                      href={tunnelState.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[14px] font-mono text-[#181818] font-semibold hover:underline break-all"
+                    >
+                      {tunnelState.url}
+                    </a>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (tunnelState?.url) {
+                          navigator.clipboard.writeText(tunnelState.url);
+                          setTunnelCopied(true);
+                          setTimeout(() => setTunnelCopied(false), 2000);
+                        }
+                      }}
+                      className="px-3 py-1.5 text-[12px] rounded-[8px] bg-[#FFFFFF] border border-[#8A857B] text-[#181818] hover:bg-[#F4F1EA] cursor-pointer"
+                    >
+                      {tunnelCopied ? '✓ Copied' : 'Copy Public URL'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Security Assessments & Guardrails Summary */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px] pt-1">
+                <div className="p-3 rounded-[10px] bg-[#FBFAF7] border border-[#E6E1D6]">
+                  <div className="flex items-center gap-1.5 font-medium text-[#181818] mb-0.5">
+                    <span>⏳</span> Auto-Session Expiry
+                  </div>
+                  <p className="text-[#5A564D]">
+                    {tunnelState?.status === 'active' && tunnelState.expiresInMinutes > 0
+                      ? `Rotates in ${Math.floor(tunnelState.expiresInMinutes / 60)}h ${tunnelState.expiresInMinutes % 60}m to prevent persistent URL scraping.`
+                      : `Rotates every ${tunnelState?.rotationIntervalHours || 8}h to minimize public exposure.`}
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-[10px] bg-[#FBFAF7] border border-[#E6E1D6]">
+                  <div className="flex items-center gap-1.5 font-medium text-[#181818] mb-0.5">
+                    <span>🛡️</span> Shift Killswitch (Night Mode)
+                  </div>
+                  <p className="text-[#5A564D]">
+                    Automatically shuts down at 11:00 PM when the restaurant closes so your counter PC is never exposed overnight.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-[10px] bg-[#FBFAF7] border border-[#E6E1D6]">
+                  <div className="flex items-center gap-1.5 font-medium text-[#181818] mb-0.5">
+                    <span>⚡</span> Anti-Abuse Rate Limiter
+                  </div>
+                  <p className="text-[#5A564D]">
+                    Protects your local POS database by throttling external IPs to 60 req/min with automatic cooldown blocks.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Table QR Ordering Section */}
+            <div className="border-t border-[#E6E1D6] pt-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <div>
+                  <h2 className="text-[18px] font-medium text-[#181818]">Table QR Dining Codes</h2>
+                  <p className="text-[13px] text-[#5A564D]">
+                    Customers scan these on their phones to view the menu and place orders.
+                  </p>
+                </div>
+                <span className="text-[12px] text-[#5A564D] bg-[#F4F1EA] px-2.5 py-1 rounded-[6px]">
+                  Routing via: <strong className="text-[#181818]">{customDomain.trim() || tunnelState?.url || 'http://localhost:3000'}</strong>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-[260px] overflow-y-auto p-1">
+                {provisionResult.tables?.map((tbl: any) => {
+                  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+                  const activeBase = customDomain.trim()
+                    ? customDomain.startsWith('http')
+                      ? customDomain
+                      : `https://${customDomain}`
+                    : tunnelState?.url || origin;
+                  const qrUrl = `${activeBase}/m?token=${tbl.qrToken}`;
+                  return (
+                    <div
+                      key={tbl.id}
+                      className="p-3 rounded-[12px] border border-[#E6E1D6] bg-[#FFFFFF] hover:border-[#8A857B] transition-colors flex flex-col justify-between"
+                    >
+                      <div>
+                        <span className="font-medium text-[#181818] text-[15px]">{tbl.number}</span>
+                        <span className="text-[11px] text-[#5A564D] block truncate mt-0.5 font-mono">
+                          {tbl.qrToken.slice(0, 14)}...
+                        </span>
+                      </div>
+                      <a
+                        href={qrUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[12px] font-bold text-[#1F7A4D] hover:underline mt-2 inline-block"
+                      >
+                        Test Menu Link ↗
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Dedicated Instruction Box: Deployment Methods & Domain Settings */}
+            <div className="rounded-[16px] bg-[#F4F1EA] border border-[#E6E1D6] p-6 space-y-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🌐</span>
+                <h3 className="text-[16px] font-medium text-[#181818]">
+                  How QR Codes Reach Your Restaurant Computer
+                </h3>
+              </div>
+              <p className="text-[13px] text-[#5A564D] leading-relaxed">
+                If running on a counter PC (<code className="font-mono text-[#181818]">localhost</code>), a customer&apos;s phone cannot reach localhost directly. RestroDash solves this with 3 deployment options:
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[13px]">
+                <div className="p-3.5 bg-[#FFFFFF] rounded-[12px] border border-[#E6E1D6]">
+                  <strong className="block text-[#181818] mb-1 font-medium">1. Automatic Cloudflare Tunnel (Active)</strong>
+                  <p className="text-[#5A564D] text-[12px] mb-2">Zero configuration. Running automatically above.</p>
+                  <p className="text-[#5A564D] text-[11px]">
+                    Provides an instant public HTTPS URL with automatic 8-hour security rotation and night shift killswitch.
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-[#FFFFFF] rounded-[12px] border border-[#E6E1D6]">
+                  <strong className="block text-[#181818] mb-1 font-medium">2. Cloud VPS & Custom Domain</strong>
+                  <p className="text-[#5A564D] text-[12px] mb-2">Recommended for permanent stickers.</p>
+                  <p className="text-[#5A564D] text-[12px]">
+                    Point your domain (e.g. <span className="font-mono text-[#181818]">order.myrestaurant.com</span>) to your VPS IP, then run Docker or PM2.
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-[#FFFFFF] rounded-[12px] border border-[#E6E1D6]">
+                  <strong className="block text-[#181818] mb-1 font-medium">3. Local Wi-Fi (100% Offline)</strong>
+                  <p className="text-[#5A564D] text-[12px] mb-2">Zero internet needed.</p>
+                  <p className="text-[#5A564D] text-[12px]">
+                    Connect customers to your guest Wi-Fi and use your counter PC&apos;s LAN IP (e.g. <span className="font-mono text-[#181818]">http://192.168.1.50:3000</span>).
+                  </p>
+                </div>
+              </div>
+
+              {/* Custom Domain Override Input */}
+              <div className="pt-2">
+                <label className="block text-[12px] font-medium text-[#181818] mb-1">
+                  Override Table QR Base URL with a Custom Domain:
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. https://order.mybistro.com"
+                    value={customDomain}
+                    onChange={(e) => setCustomDomain(e.target.value)}
+                    className="flex-1 border border-[#8A857B] rounded-[8px] px-3 py-1.5 text-[13px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
+                  />
+                  {customDomain && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomDomain('')}
+                      className="px-3 py-1 text-[12px] border border-[#8A857B] rounded-[8px] bg-[#FFFFFF] text-[#5A564D] hover:text-[#181818]"
+                    >
+                      Reset to Tunnel URL
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       </main>
 
       {/* Footer Minimal */}
