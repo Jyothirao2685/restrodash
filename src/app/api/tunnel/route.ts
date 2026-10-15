@@ -19,9 +19,27 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { action, rotationIntervalHours, shiftKillswitch } = body;
+    const { action, token, domain, mode, rotationIntervalHours, shiftKillswitch } = body;
+
+    if (action === 'start_token') {
+      if (!token || !domain) {
+        return NextResponse.json(
+          { success: false, error: 'Both token and domain are required for permanent Cloudflare Named Tunnel.' },
+          { status: 400 }
+        );
+      }
+      await tunnelManager.startWithToken(token, domain);
+      return NextResponse.json({
+        success: true,
+        message: 'Permanent Cloudflare Named Tunnel connected successfully',
+        ...tunnelManager.getState(),
+      });
+    }
 
     if (action === 'start') {
+      if (mode) {
+        tunnelManager.configure({ mode });
+      }
       await tunnelManager.start();
       return NextResponse.json({
         success: true,
@@ -50,6 +68,9 @@ export async function POST(req: NextRequest) {
 
     if (action === 'config') {
       tunnelManager.configure({
+        mode,
+        token,
+        domain,
         rotationIntervalHours,
         shiftKillswitch,
       });
@@ -61,7 +82,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, error: `Invalid action '${action}'. Expected 'start', 'stop', 'rotate', or 'config'.` },
+      { success: false, error: `Invalid action '${action}'. Expected 'start', 'start_token', 'stop', 'rotate', or 'config'.` },
       { status: 400 }
     );
   } catch (err: any) {

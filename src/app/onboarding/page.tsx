@@ -42,10 +42,13 @@ function OnboardingContent() {
   const [provisionResult, setProvisionResult] = useState<any>(null);
   const [customDomain, setCustomDomain] = useState('');
 
-  // Automatic Cloudflare Quick Tunnel State & Security Controls
+  // Cloudflare Tunnel State (Permanent Named Tunnel & Quick Tunnel)
   const [tunnelState, setTunnelState] = useState<{
     status: string;
+    mode: 'quick' | 'token';
     url: string | null;
+    domain: string | null;
+    hasTokenConfigured: boolean;
     expiresInMinutes: number;
     rotationIntervalHours: number;
     rotationCount: number;
@@ -53,6 +56,11 @@ function OnboardingContent() {
   } | null>(null);
   const [tunnelLoading, setTunnelLoading] = useState(false);
   const [tunnelCopied, setTunnelCopied] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [domainInput, setDomainInput] = useState('');
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [tokenSuccess, setTokenSuccess] = useState<string | null>(null);
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
 
   const fetchTunnelState = async () => {
     try {
@@ -60,24 +68,69 @@ function OnboardingContent() {
       const data = await res.json();
       if (data.success) {
         setTunnelState(data);
+        if (data.url && !customDomain) {
+          setCustomDomain(data.url);
+        }
+        if (data.domain && !domainInput) {
+          setDomainInput(data.domain);
+        }
       }
+      return data;
     } catch {
-      // Fallback
+      return null;
     }
   };
 
-  const handleStartTunnel = async () => {
+  const handleStartQuickTunnel = async () => {
+    setTunnelLoading(true);
+    setTokenError(null);
+    try {
+      const res = await fetch('/api/tunnel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start', mode: 'quick' }),
+      });
+      const data = await res.json();
+      setTunnelState(data);
+      if (data.url) {
+        setCustomDomain(data.url);
+      }
+    } catch (err: any) {
+      console.error('Failed to start quick tunnel:', err);
+    } finally {
+      setTunnelLoading(false);
+    }
+  };
+
+  const handleConnectPermanentTunnel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTokenError(null);
+    setTokenSuccess(null);
+    if (!tokenInput.trim() || !domainInput.trim()) {
+      setTokenError('Please enter both your Cloudflare Tunnel Token and your permanent domain.');
+      return;
+    }
+
     setTunnelLoading(true);
     try {
       const res = await fetch('/api/tunnel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start' }),
+        body: JSON.stringify({
+          action: 'start_token',
+          token: tokenInput.trim(),
+          domain: domainInput.trim(),
+        }),
       });
       const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to connect permanent Cloudflare Named Tunnel.');
+      }
       setTunnelState(data);
-    } catch (err) {
-      console.error('Failed to start tunnel:', err);
+      setCustomDomain(data.url || domainInput.trim());
+      setTokenSuccess('Permanent Cloudflare Named Tunnel connected! Your QR codes will never change.');
+    } catch (err: any) {
+      setTokenError(err.message || 'Error connecting permanent tunnel.');
     } finally {
       setTunnelLoading(false);
     }
@@ -117,16 +170,23 @@ function OnboardingContent() {
     }
   };
 
-  // Auto-start tunnel upon entering Step 4 & poll state
+  // Poll tunnel status upon entering Step 4
   useEffect(() => {
     if (step === 4) {
-      fetchTunnelState().then(() => {
-        handleStartTunnel();
+      fetchTunnelState().then((state) => {
+        if (state?.hasTokenConfigured && state?.status !== 'active') {
+          fetch('/api/tunnel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'start' }),
+          }).then((r) => r.json()).then(setTunnelState).catch(() => {});
+        }
       });
       const interval = setInterval(fetchTunnelState, 8000);
       return () => clearInterval(interval);
     }
   }, [step]);
+
 
   // Live subdomain availability check debounce
   useEffect(() => {
@@ -702,7 +762,7 @@ function OnboardingContent() {
               </a>
             </div>
 
-            {/* Automatic Cloudflare Tunnel Controller & Security Hub */}
+            {/* Cloudflare Tunnel Controller: Permanent Named Tunnel (Solution 1) & Quick Test */}
             <div className="rounded-[16px] bg-[#FFFFFF] border border-[#E6E1D6] p-6 space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -718,7 +778,9 @@ function OnboardingContent() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-[16px] font-medium text-[#181818]">
-                        Automatic Cloudflare Tunnel
+                        {tunnelState?.mode === 'token' && tunnelState?.status === 'active'
+                          ? 'Permanent Cloudflare Named Tunnel'
+                          : 'Cloudflare Tunnel Connection'}
                       </h3>
                       <span
                         className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
@@ -730,70 +792,48 @@ function OnboardingContent() {
                         }`}
                       >
                         {tunnelState?.status === 'active'
-                          ? 'Live & Secure'
-                          : tunnelState?.status === 'rotating'
-                          ? 'Rotating...'
+                          ? tunnelState.mode === 'token'
+                            ? 'Permanent (Never Rotates)'
+                            : 'Temporary Quick Tunnel'
                           : 'Stopped'}
                       </span>
                     </div>
                     <p className="text-[12px] text-[#5A564D] mt-0.5">
-                      Zero configuration needed. Automatic HTTPS bridge connects customer phones directly to your counter PC.
+                      Connect your permanent restaurant domain to this counter PC without router port forwarding.
                     </p>
                   </div>
                 </div>
 
-                {/* Tunnel Action Buttons */}
-                <div className="flex items-center gap-2">
-                  {tunnelState?.status === 'active' ? (
-                    <>
-                      <button
-                        type="button"
-                        disabled={tunnelLoading}
-                        onClick={handleRotateTunnel}
-                        className="px-3.5 py-1.5 rounded-[8px] bg-[#F4F1EA] hover:bg-[#E6E1D6] border border-[#8A857B] text-[12px] font-medium text-[#181818] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        <span>🔄</span> {tunnelLoading ? 'Rotating...' : 'Rotate Security URL'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={tunnelLoading}
-                        onClick={handleStopTunnel}
-                        className="px-3.5 py-1.5 rounded-[8px] bg-[#FFF0EF] hover:bg-[#FFE0DE] border border-[#B3261E]/30 text-[12px] font-medium text-[#B3261E] transition-colors cursor-pointer disabled:opacity-50"
-                      >
-                        Stop Tunnel
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={tunnelLoading}
-                      onClick={handleStartTunnel}
-                      className="btn-ink px-4 py-2 text-[13px] flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      <span>⚡</span> {tunnelLoading ? 'Starting...' : 'Start Automatic Tunnel'}
-                    </button>
-                  )}
-                </div>
+                {/* Tunnel Stop / Disconnect Action */}
+                {tunnelState?.status === 'active' && (
+                  <button
+                    type="button"
+                    disabled={tunnelLoading}
+                    onClick={handleStopTunnel}
+                    className="px-3.5 py-1.5 rounded-[8px] bg-[#FFF0EF] hover:bg-[#FFE0DE] border border-[#B3261E]/30 text-[12px] font-medium text-[#B3261E] transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Disconnect Tunnel
+                  </button>
+                )}
               </div>
 
-              {/* Active Tunnel URL Banner */}
-              {tunnelState?.status === 'active' && tunnelState.url && (
-                <div className="p-4 rounded-[12px] bg-[#F4F1EA] border border-[#E6E1D6] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <span className="text-[11px] font-medium text-[#5A564D] uppercase tracking-wider block">
-                      Active Customer HTTPS Endpoint:
-                    </span>
-                    <a
-                      href={tunnelState.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[14px] font-mono text-[#181818] font-semibold hover:underline break-all"
-                    >
-                      {tunnelState.url}
-                    </a>
-                  </div>
-
-                  <div className="flex items-center gap-2">
+              {/* Connected Permanent Named Tunnel Banner */}
+              {tunnelState?.mode === 'token' && tunnelState?.status === 'active' && tunnelState.url && (
+                <div className="p-4 rounded-[12px] bg-[#F4F1EA] border border-[#E6E1D6] space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[11px] font-medium text-[#5A564D] uppercase tracking-wider block">
+                        Permanent Ordering Domain:
+                      </span>
+                      <a
+                        href={tunnelState.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[15px] font-mono text-[#181818] font-bold hover:underline"
+                      >
+                        {tunnelState.url}
+                      </a>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
@@ -805,44 +845,138 @@ function OnboardingContent() {
                       }}
                       className="px-3 py-1.5 text-[12px] rounded-[8px] bg-[#FFFFFF] border border-[#8A857B] text-[#181818] hover:bg-[#F4F1EA] cursor-pointer"
                     >
-                      {tunnelCopied ? '✓ Copied' : 'Copy Public URL'}
+                      {tunnelCopied ? 'Copied' : 'Copy Domain URL'}
                     </button>
                   </div>
+                  <p className="text-[12px] text-[#1F7A4D] font-medium">
+                    Permanent setup confirmed. Table QR codes will never change and do not need reprinting.
+                  </p>
                 </div>
               )}
 
-              {/* Security Assessments & Guardrails Summary */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px] pt-1">
-                <div className="p-3 rounded-[10px] bg-[#FBFAF7] border border-[#E6E1D6]">
-                  <div className="flex items-center gap-1.5 font-medium text-[#181818] mb-0.5">
-                    <span>⏳</span> Auto-Session Expiry
+              {/* Connected Quick Tunnel Banner */}
+              {tunnelState?.mode === 'quick' && tunnelState?.status === 'active' && tunnelState.url && (
+                <div className="p-4 rounded-[12px] bg-[#F4F1EA] border border-[#E6E1D6] space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[11px] font-medium text-[#5A564D] uppercase tracking-wider block">
+                        Temporary Quick URL (Testing Only):
+                      </span>
+                      <a
+                        href={tunnelState.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[14px] font-mono text-[#181818] font-semibold hover:underline"
+                      >
+                        {tunnelState.url}
+                      </a>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={tunnelLoading}
+                        onClick={handleRotateTunnel}
+                        className="px-3 py-1.5 text-[12px] rounded-[8px] bg-[#FFFFFF] border border-[#8A857B] text-[#181818] hover:bg-[#F4F1EA] cursor-pointer disabled:opacity-50"
+                      >
+                        Rotate URL
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-[#5A564D]">
-                    {tunnelState?.status === 'active' && tunnelState.expiresInMinutes > 0
-                      ? `Rotates in ${Math.floor(tunnelState.expiresInMinutes / 60)}h ${tunnelState.expiresInMinutes % 60}m to prevent persistent URL scraping.`
-                      : `Rotates every ${tunnelState?.rotationIntervalHours || 8}h to minimize public exposure.`}
+                  <p className="text-[12px] text-[#5A564D]">
+                    This is an ephemeral testing tunnel. For permanent printed table QR codes, connect a Cloudflare Tunnel Token below.
                   </p>
                 </div>
+              )}
 
-                <div className="p-3 rounded-[10px] bg-[#FBFAF7] border border-[#E6E1D6]">
-                  <div className="flex items-center gap-1.5 font-medium text-[#181818] mb-0.5">
-                    <span>🛡️</span> Shift Killswitch (Night Mode)
-                  </div>
-                  <p className="text-[#5A564D]">
-                    Automatically shuts down at 11:00 PM when the restaurant closes so your counter PC is never exposed overnight.
-                  </p>
-                </div>
+              {/* Form to Connect Permanent Named Tunnel (Solution 1) */}
+              {(!tunnelState || tunnelState.mode !== 'token' || tunnelState.status !== 'active') && (
+                <form onSubmit={handleConnectPermanentTunnel} className="space-y-4 pt-2">
+                  <div className="border border-[#E6E1D6] rounded-[12px] p-4 bg-[#FBFAF7] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <strong className="text-[14px] font-medium text-[#181818]">
+                        Connect Permanent Custom Domain (Cloudflare Named Tunnel)
+                      </strong>
+                      <button
+                        type="button"
+                        onClick={() => setShowSetupGuide(!showSetupGuide)}
+                        className="text-[12px] text-[#181818] underline cursor-pointer"
+                      >
+                        {showSetupGuide ? 'Hide Setup Guide' : 'Setup Guide (3 Steps)'}
+                      </button>
+                    </div>
 
-                <div className="p-3 rounded-[10px] bg-[#FBFAF7] border border-[#E6E1D6]">
-                  <div className="flex items-center gap-1.5 font-medium text-[#181818] mb-0.5">
-                    <span>⚡</span> Anti-Abuse Rate Limiter
+                    {showSetupGuide && (
+                      <div className="p-3.5 rounded-[8px] bg-[#FFFFFF] border border-[#E6E1D6] text-[12px] text-[#5A564D] space-y-2">
+                        <p className="font-medium text-[#181818]">How to configure a free Cloudflare Named Tunnel:</p>
+                        <ol className="list-decimal list-inside space-y-1">
+                          <li>Go to Cloudflare Zero Trust (dash.cloudflare.com) and navigate to <strong>Networks → Tunnels</strong>.</li>
+                          <li>Click <strong>Create a Tunnel</strong>, choose Cloudflared, name it, and copy the <strong>Token</strong>.</li>
+                          <li>In the <strong>Public Hostnames</strong> tab, map your domain (e.g. <span className="font-mono text-[#181818]">order.mybistro.com</span>) to Service: <span className="font-mono text-[#181818]">HTTP localhost:3000</span>.</li>
+                          <li>Paste your domain and token below and click Connect.</li>
+                        </ol>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[12px] font-medium text-[#181818] mb-1">
+                          Permanent Ordering Domain:
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. order.myrestaurant.com"
+                          value={domainInput}
+                          onChange={(e) => setDomainInput(e.target.value)}
+                          className="w-full border border-[#8A857B] rounded-[8px] px-3 py-2 text-[13px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[12px] font-medium text-[#181818] mb-1">
+                          Cloudflare Tunnel Token:
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          placeholder="eyJhIjoi..."
+                          value={tokenInput}
+                          onChange={(e) => setTokenInput(e.target.value)}
+                          className="w-full border border-[#8A857B] rounded-[8px] px-3 py-2 text-[13px] text-[#181818] bg-[#FFFFFF] focus:outline-hidden focus:border-[#181818]"
+                        />
+                      </div>
+                    </div>
+
+                    {tokenError && (
+                      <p className="text-[12px] text-[#B3261E]">{tokenError}</p>
+                    )}
+                    {tokenSuccess && (
+                      <p className="text-[12px] text-[#1F7A4D] font-medium">{tokenSuccess}</p>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                      <button
+                        type="submit"
+                        disabled={tunnelLoading}
+                        className="btn-ink py-2 px-5 text-[13px] disabled:opacity-50"
+                      >
+                        {tunnelLoading ? 'Connecting...' : 'Connect Permanent Tunnel →'}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={tunnelLoading}
+                        onClick={handleStartQuickTunnel}
+                        className="py-2 px-4 rounded-[8px] bg-[#FFFFFF] border border-[#8A857B] text-[13px] text-[#5A564D] hover:text-[#181818] disabled:opacity-50"
+                      >
+                        Or Start Temporary Quick Tunnel (Testing Only)
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-[#5A564D]">
-                    Protects your local POS database by throttling external IPs to 60 req/min with automatic cooldown blocks.
-                  </p>
-                </div>
-              </div>
+                </form>
+              )}
             </div>
+
 
             {/* Live Table QR Ordering Section */}
             <div className="border-t border-[#E6E1D6] pt-6">

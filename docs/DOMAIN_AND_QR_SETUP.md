@@ -22,60 +22,44 @@ To make QR codes work from customers' phones, your RestroDash instance must be r
 
 ---
 
-## Method 1: Localhost Counter PC with Free Cloudflare Tunnel (Recommended for Beginners)
+## Method 1: Permanent Cloudflare Named Tunnel (Recommended for Real Restaurants)
 
-If you don't want to pay for a cloud VPS and want to run RestroDash directly on your billing counter computer, you can expose your local port `3000` to a secure public HTTPS URL using Cloudflare's official free tunnel (`cloudflared`).
+For physical restaurant tables, QR codes must be permanent. Cloudflare Named Tunnels allow you to map your own custom domain (e.g. `order.myrestaurant.com`) directly to your counter computer (`http://localhost:3000`) for free, without router port forwarding or static IPs.
 
-### Advantages:
-- **100% Free forever** (no subscription, no server costs).
-- **No router port-forwarding or public IP required.**
-- **Automatic HTTPS/SSL certificates** (camera QR scanners require HTTPS for modern browser permissions).
-- Works even behind restrictive ISP routers or mobile hotspots.
+### Why this is the gold standard for physical QR codes:
+- **Permanent QR Codes:** The URL is permanently `https://order.myrestaurant.com/m?token=...`. Printed acrylic stands and table stickers never expire and never need reprinting.
+- **100% Free Forever:** Cloudflare Zero Trust tunnels are completely free.
+- **Enterprise Security:** Cloudflare WAF and DDoS protection shield your local billing computer from outside attacks.
+- **Zero Network Setup:** Works automatically behind standard commercial routers, Wi-Fi, or mobile hotspots.
 
-### Step-by-Step Setup:
+### 4-Step Setup Guide:
 
-1. **Start RestroDash locally:**
-   ```bash
-   npm run dev
-   # RestroDash is now running on http://localhost:3000
-   ```
+1. **Create a Free Cloudflare Account:**
+   - Sign up at [dash.cloudflare.com](https://dash.cloudflare.com/) and add your restaurant's domain.
+2. **Create a Named Tunnel:**
+   - In the Cloudflare dashboard, go to **Zero Trust** → **Networks** → **Tunnels**.
+   - Click **Create a Tunnel**, select **Cloudflared**, and give it a name (e.g., `my-counter-pos`).
+   - In the installation step, copy the tunnel **Token** (the alphanumeric string starting with `eyJh...`).
+3. **Configure Public Hostname:**
+   - In the tunnel settings, click **Public Hostnames** → **Add a public hostname**.
+   - Subdomain: `order` (or leave empty for root domain).
+   - Domain: `yourrestaurant.com`.
+   - Service: Type `HTTP`, URL: `localhost:3000`.
+   - Click **Save Hostname**.
+4. **Connect in RestroDash:**
+   - In the RestroDash Onboarding Step 4 Launch Hub (or Settings), paste your domain (`order.yourrestaurant.com`) and your Cloudflare Tunnel Token.
+   - Click **Connect Permanent Tunnel**.
+   - RestroDash connects automatically in the background. Your table QR codes are now permanent!
 
-2. **Download Cloudflare Tunnel (`cloudflared`):**
-   - **Windows:** Download `cloudflared-windows-amd64.exe` from [Cloudflare Releases](https://github.com/cloudflare/cloudflared/releases) or via winget:
-     ```powershell
-     winget install --id Cloudflare.cloudflared
-     ```
-   - **macOS (Homebrew):**
-     ```bash
-     brew install cloudflared
-     ```
-   - **Linux:**
-     ```bash
-     sudo apt-get install cloudflared
-     ```
+---
 
-3. **Start an Instant Public Tunnel:**
-   Run this single command in your terminal:
-   ```bash
-   cloudflared tunnel --url http://localhost:3000
-   ```
+### Alternative: Quick Ephemeral Tunnel (Testing Only)
 
-4. **Copy your Public HTTPS URL:**
-   Cloudflare will output a public tunnel link, for example:
-   ```text
-   +--------------------------------------------------------------------------------------------+
-   |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
-   |  https://curly-pine-salmon-92a1.trycloudflare.com                                          |
-   +--------------------------------------------------------------------------------------------+
-   ```
+If you do not have a custom domain yet and want an immediate 30-second test from your phone:
+- Click **Start Temporary Quick Tunnel** in the Onboarding Launch Hub.
+- RestroDash creates an instant temporary `trycloudflare.com` link.
+- Note: Quick tunnel URLs change upon restart and are intended for testing only, not for physical table stickers.
 
-5. **Generate your QR Codes:**
-   - In your RestroDash Onboarding or Table Management screen, enter `https://curly-pine-salmon-92a1.trycloudflare.com` as your Base URL.
-   - Your table QR codes will instantly format as:
-     `https://curly-pine-salmon-92a1.trycloudflare.com/m?token=TABLE_QR_TOKEN`
-   - Print your table QR codes and place them on your tables! Any customer scanning the QR code from their mobile phone will instantly see your live digital menu and place orders.
-
-*(Optional)* If you own a custom domain (e.g. `order.myrestaurant.com`), you can bind `cloudflared` to your Cloudflare account permanently for free so the URL never changes across restarts.
 
 ---
 
